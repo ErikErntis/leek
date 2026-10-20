@@ -19,3 +19,8 @@
   .mobile[open] > nav { position: absolute; z-index: 30; top: calc(100% + 17px); left: auto; right: 0; width: min(300px, calc(100vw - 36px)); padding: 14px; background: var(--bg, #f8f7f3); border: 1px solid var(--line, #dedfd6); border-radius: 8px; box-shadow: 0 12px 24px #15252112; }
   .mobile[open] > nav a { display: block; padding: 10px; font-size: 13px; }
 }
+
+.logout { display: inline-flex; align-items: center; min-height: 44px; border: 0; padding: 8px; background: transparent; color: #405542; font: inherit; font-size: 12px; cursor: pointer; }
+.logout:focus-visible { outline: 2px solid #204e3c; outline-offset: 2px; border-radius: 4px; }
+.logout:disabled { opacity: .6; cursor: default; }
+.logoutError { display: block; max-width: 190px; font-size: 11px; line-height: 1.6; color: #a14932; }

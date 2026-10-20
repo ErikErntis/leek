@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { emptyAuthValues, validateAuth, type AuthErrors, type AuthMode, type AuthValues } from './validation';
 import styles from './auth.module.css';
 import type { Plan } from '@leek/contracts';
@@ -68,7 +68,9 @@ export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPla
   const [values, setValues] = useState<AuthValues>({ ...emptyAuthValues });
   const [errors, setErrors] = useState<AuthErrors>({});
   const [touched, setTouched] = useState<Partial<Record<keyof AuthValues, boolean>>>({});
-  const [status, setStatus] = useState<'idle' | 'invalid' | 'valid'>('idle');
+  const [status, setStatus] = useState<'idle' | 'invalid' | 'submitting' | 'error'>('idle');
+  const submitting = useRef(false);
+  const [serverError, setServerError] = useState('');
   useEffect(() => { setReady(true); }, []);
 
   function update(name: keyof AuthValues, value: string) {
@@ -91,8 +93,9 @@ export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPla
     setErrors(previous => ({ ...previous, [name]: checked[name] }));
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
     const checked = validateAuth(mode, values);
     setErrors(checked);
     setTouched(register
@@ -107,15 +110,33 @@ export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPla
       });
       return;
     }
-    // Deliberately no network, storage, session or navigation in this UI-only step.
-    setStatus('valid');
+    submitting.current = true;
+    setStatus('submitting');
+    setServerError('');
+    try {
+      const response = await fetch(`/api/auth/${register ? 'sign-up' : 'sign-in'}/email`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(register ? { name: values.name.trim() } : {}), email: values.email.trim(), password: values.password }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) {
+        if (response.status === 429) throw new Error('Liiga palju katseid. Palun oota veidi ja proovi uuesti.');
+        if (response.status >= 500) throw new Error('Sisselogimise teenus pole praegu kättesaadav. Proovi veidi aja pärast uuesti.');
+        throw new Error(register ? 'Kontot ei saanud luua. Kontrolli andmeid või proovi olemasoleva kontoga sisse logida.' : 'E-post või parool ei ole õige.');
+      }
+      // A full navigation lets the server read the HttpOnly session cookie immediately.
+      window.location.assign(selectedPlanId ? `/ettevote/lisa?pakett=${encodeURIComponent(selectedPlanId)}` : '/ettevote/lisa');
+    } catch (error) {
+      setServerError(error instanceof Error && error.name !== 'TimeoutError' && error.name !== 'TypeError' ? error.message : 'Ühendus ebaõnnestus. Palun proovi uuesti.');
+      setStatus('error');
+    } finally { submitting.current = false; }
   }
 
   const emailId = `${formId}-email`;
   const nameId = `${formId}-name`;
 
   return (
-    <form ref={formRef} id="auth-form" className={styles.form} method="post" noValidate onSubmit={submit}>
+    <form ref={formRef} id="auth-form" className={styles.form} method="post" noValidate onSubmit={submit} aria-busy={status === 'submitting'}>
       {selectedPlanId && <input type="hidden" name="pakett" value={selectedPlanId} />}
       {status === 'invalid' && <p role="alert" className={styles.errorSummary}>Palun kontrolli märgitud välju.</p>}
       {register && (
@@ -182,16 +203,10 @@ export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPla
         onChange={value => update('passwordConfirm', value)}
         onBlur={() => blur('passwordConfirm')}
       />}
-      <button className={styles.submit} type="submit" disabled={!ready}>
-        {register ? 'Loo konto' : 'Logi sisse'} <ArrowRight size={18} aria-hidden="true" />
+      <button className={styles.submit} type="submit" disabled={!ready || status === 'submitting'}>
+        {status === 'submitting' ? 'Palun oota…' : register ? 'Loo konto' : 'Logi sisse'} <ArrowRight size={18} aria-hidden="true" />
       </button>
-      {status === 'valid' && (
-        <div role="status" className={styles.validNotice}>
-          <CheckCircle2 size={19} aria-hidden="true" />
-          <div><p>Andmed on korrektsed. {register ? 'Konto loomine' : 'Sisselogimine'} pole selles eelvaates veel avatud.</p>
-          {register && <a href={selectedPlanId ? `/ettevote/lisa?pakett=${encodeURIComponent(selectedPlanId)}` : '/ettevote/lisa'}>Vaata järgmist sammu: ettevõtte andmed →</a>}</div>
-        </div>
-      )}
+      {status === 'error' && <p role="alert" className={styles.errorSummary}>{serverError}</p>}
       <p className={styles.switchLink}>
         {register ? 'Konto on juba olemas?' : 'Pole veel kontot?'}{' '}
         <a href={switchHref}>{register ? 'Logi sisse' : 'Loo konto'}</a>

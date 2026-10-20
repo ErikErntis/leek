@@ -1,13 +1,12 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import type { Plan } from '@leek/contracts';
+import { getSession } from './session';
 
-/** Fail closed until server-verified authentication is connected.
- * Demo preview is available only through the local development server.
- * Never authorize a future company-write endpoint using this preview exception.
- */
-export function requireCompanyOnboardingAccess(selectedPlanId?: Plan) {
-  if (process.env.NODE_ENV === 'development' && process.env.DEMO_MODE === 'true') return;
+/** No demo bypass. Future writes must independently verify the API session. */
+export async function requireCompanyOnboardingAccess(selectedPlanId?: Plan) {
+  const session = await getSession();
+  if (session) return session;
   const query = selectedPlanId ? `?pakett=${encodeURIComponent(selectedPlanId)}` : '';
   redirect(`/logi-sisse${query}`);
 }

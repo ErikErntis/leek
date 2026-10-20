@@ -8,6 +8,6 @@ export const metadata: Metadata = { title: 'Lisa ettevõte', robots: { index: fa
 export default async function AddCompanyPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
   const selectedPlan = getPricingPlan(query.pakett);
-  requireCompanyOnboardingAccess(selectedPlan?.id);
+  await requireCompanyOnboardingAccess(selectedPlan?.id);
   return <CompanyForm selectedPlan={selectedPlan} />;
 }

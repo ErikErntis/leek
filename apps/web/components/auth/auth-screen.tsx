@@ -45,10 +45,6 @@ export function AuthScreen({ mode, selectedPlan }: { mode: AuthMode; selectedPla
             </aside>
           )}
           {register && <RegionNotice compact />}
-          <div className={styles.previewNote}>
-            <span className={styles.previewDot} aria-hidden="true" />
-            <span><strong>Vormi eelvaade.</strong> Andmeid ei saadeta ega salvestata.</span>
-          </div>
           <AuthForm key={`${mode}:${selectedPlan?.id ?? 'none'}`} mode={mode} selectedPlanId={selectedPlan?.id} />
         </section>
       </div>
