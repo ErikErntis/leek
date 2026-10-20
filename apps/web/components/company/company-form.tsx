@@ -1,31 +1,31 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Layers, LockKeyhole, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Check, Layers, LockKeyhole, Users } from 'lucide-react';
 import { categories } from '@leek/contracts';
 import { Dropdown } from '@leek/ui/dropdown';
 import { formatAnnualPrice, type PricingPlan } from '../../lib/pricing';
 import { emptyCompanyValues, employeeBands, stepFields, validateCompany, type CompanyErrors, type CompanyValues } from './validation';
 import styles from './company.module.css';
+import { useRouter } from 'next/navigation';
 
 const steps = ['Ettevõtte andmed', 'Asukoht ja kontaktid', 'Tutvustus'];
 
 export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
   const id = useId();
+  const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const [ready, setReady] = useState(false);
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<CompanyValues>({ ...emptyCompanyValues, additionalCategories: [] });
   const [errors, setErrors] = useState<CompanyErrors>({});
-  const [checked, setChecked] = useState(false);
   useEffect(() => setReady(true), []);
 
   function update<K extends keyof CompanyValues>(key: K, value: CompanyValues[K]) {
     const next = { ...values, [key]: value };
     if (key === 'category') next.additionalCategories = next.additionalCategories.filter(category => category !== value);
     setValues(next);
-    setChecked(false);
     setErrors(previous => {
       if (!previous[key]) return previous;
       return { ...previous, [key]: validateCompany(next)[key] };
@@ -51,7 +51,7 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
       return;
     }
     if (step < 2) move(step + 1);
-    else setChecked(true); // UI preview only: no company is submitted or persisted.
+    else router.push(selectedPlan ? `/ettevote/valmis?pakett=${encodeURIComponent(selectedPlan.id)}` : '/ettevote/valmis'); // Preview only; no company is saved.
   }
 
   function field(key: keyof CompanyValues, label: string, options: { type?: string; optional?: boolean; max?: number; placeholder?: string; autoComplete?: string; multiline?: boolean } = {}) {
@@ -108,7 +108,6 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
               <div className={styles.nextNote}><strong>Mis saab edasi?</strong><p>Pärast esitamist vaatab LEEKi haldur ettevõtte andmed üle. Tasulise paketi eest saad tasuda pärast ettevõtte konto kinnitamist.</p></div>
             </div>}
             <div className={styles.actions}>{step > 0 ? <button type="button" onClick={() => move(step - 1)} className={styles.back}><ArrowLeft size={17} />Tagasi</button> : <span /> }<button type="submit" disabled={!ready} className={styles.submit}>{step === 2 ? 'Esita ettevõte kinnitamiseks' : 'Jätka'}<ArrowRight size={17} aria-hidden="true" /></button></div>
-            {checked && <div className={styles.result} role="status"><CheckCircle2 size={22} aria-hidden="true" /><p><strong>Vormi kontroll läbitud.</strong> Eelvaates ettevõtet kinnitamiseks ei saadeta. Andmete salvestamise ühendame järgmises etapis.</p></div>}
           </form>
         </section>
       </div>
