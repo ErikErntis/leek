@@ -1,0 +1,82 @@
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.keyword {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 14px 18px;
+  border: 1px solid var(--line, #dedfd6);
+  border-radius: 8px;
+  background: var(--paper, #fff);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.keyword:hover { border-color: #a6afa6; }
+.keyword:focus-within {
+  border-color: var(--green, #204e3c);
+  box-shadow: inset 0 0 0 1px var(--green, #204e3c);
+}
+.keywordIcon { flex: 0 0 auto; color: #68776c; stroke-width: 1.65; }
+.keywordCopy { display: grid; gap: 5px; min-width: 0; width: 100%; }
+.label { font-size: 11px; line-height: 1.2; color: var(--muted, #6d746f); font-weight: 450; letter-spacing: .015em; }
+.input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink, #152521);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  outline: none !important;
+  box-shadow: none;
+}
+.input::placeholder { color: #92978e; font-weight: 400; }
+.submit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  min-height: 76px;
+  padding: 16px 23px;
+  border: 1px solid var(--orange, #ec5b25);
+  border-radius: 8px;
+  background: var(--orange, #ec5b25);
+  color: white;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.submit > span { display: flex; }
+.submit:hover { background: var(--orange-dark, #bc4013); border-color: var(--orange-dark, #bc4013); }
+.submit:focus-visible { outline: 2px solid var(--orange-dark, #bc4013); outline-offset: 3px; }
+
+@media (max-width: 1000px) {
+  .form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .keyword, .submit { grid-column: 1 / -1; }
+  .submit { min-height: 50px; }
+}
+@media (max-width: 650px) {
+  .form { gap: 10px; margin-top: 22px; }
+  .keyword { min-height: 68px; padding: 12px 15px; }
+  .input { font-size: 16px; }
+  .submit { min-height: 52px; font-size: 14px; }
+}
+@media (max-width: 430px) {
+  .form { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .keyword, .submit { transition: none; }
+}
