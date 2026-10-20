@@ -8,5 +8,5 @@ export function hasFeature(plan: Plan, feature: 'profile' | 'offers' | 'jobs', e
  const activePlan = plan !== 'free' && expiresAt !== null && expiresAt > now ? plan : 'free';
  return feature === 'profile' || (feature === 'offers' && activePlan !== 'free') || (feature === 'jobs' && activePlan === 'employer');
 }
-// Session verification will be wired with Better Auth in the next slice.
+// Better Auth session verification lives in the server-only ./server entry.
 // No unverified client identity or demo actor may authorize a write.

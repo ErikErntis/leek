@@ -11,7 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.11",
     "@leek/config": "workspace:*",
-    "@leek/contracts": "workspace:*"
+    "@leek/contracts": "workspace:*",
+    "@leek/db": "workspace:*",
+    "better-auth": "1.7.11"
   }
 }
