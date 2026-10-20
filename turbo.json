@@ -1,0 +1,46 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "globalEnv": [
+    "DEMO_MODE",
+    "DATABASE_URL",
+    "API_URL",
+    "SITE_URL",
+    "PORTAL_URL",
+    "ADMIN_URL",
+    "ALLOWED_ORIGINS"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^typecheck"
+      ],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": []
+    },
+    "generate": {
+      "cache": false
+    },
+    "migrate": {
+      "cache": false
+    }
+  }
+}

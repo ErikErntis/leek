@@ -1,0 +1,25 @@
+{
+  "name": "@leek/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/app.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "hono": "4.13.13",
+    "@leek/contracts": "workspace:*",
+    "@leek/db": "workspace:*",
+    "@leek/auth": "workspace:*"
+  },
+  "devDependencies": {
+    "@leek/config": "workspace:*",
+    "tsx": "^4.20.6",
+    "tsup": "^8.5.0"
+  }
+}

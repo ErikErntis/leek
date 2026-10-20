@@ -1,0 +1,10 @@
+{
+  "extends": "@leek/config/base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}

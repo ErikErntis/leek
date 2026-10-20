@@ -1,0 +1,1 @@
+export default function NotFound(){return <div className="not-found"><h1>Seda lehte ei leidnud.</h1><p>Kontrolli aadressi või alusta uuesti avalehelt.</p><a href="/" className="button">Tagasi avalehele</a></div>;}

@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: leek
+      POSTGRES_PASSWORD: leek
+      POSTGRES_DB: leek
+    ports:
+      - "5432:5432"
+    volumes:
+      - leek-data:/var/lib/postgresql/data
+volumes:
+  leek-data:
