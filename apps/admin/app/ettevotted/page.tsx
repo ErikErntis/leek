@@ -1,3 +1,2 @@
-import { WorkspaceShell } from '@leek/ui';
-import { CompaniesTable } from '../../components/companies';
-export default function Companies(){return <WorkspaceShell kind="admin" active="/ettevotted" siteUrl={process.env.SITE_URL}><div className="workspace-heading"><div><h1>Ettevõtted</h1><p>Piirkonna ettevõtete kataloogi ülevaade.</p></div></div><section className="panel"><CompaniesTable/></section></WorkspaceShell>;}
+import { CompanyList,listQuery } from '../../components/company-list';
+export default async function Companies({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){return <CompanyList {...listQuery(await searchParams,'all')} active="/ettevotted"/>;}

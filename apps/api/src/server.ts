@@ -4,13 +4,14 @@ import { demoData } from '@leek/contracts/demo';
 import type { PublicData } from '@leek/contracts';
 import { createApp, type Repository } from './app';
 import { createAuth } from '@leek/auth/server';
+import { createCompanyService } from './company-service';
 const demo = process.env.DEMO_MODE === 'true';
 if (!demo && !process.env.DATABASE_URL) throw new Error('Set DATABASE_URL or explicitly enable DEMO_MODE=true');
 const database = !demo && process.env.DATABASE_URL ? createDatabase(process.env.DATABASE_URL) : null;
 const secret = process.env.BETTER_AUTH_SECRET;
 const publicURL = process.env.BETTER_AUTH_URL;
 if (!demo && (!secret || !publicURL)) throw new Error('BETTER_AUTH_SECRET and BETTER_AUTH_URL are required outside demo mode');
-const auth = database && secret && publicURL ? createAuth(database.db, { secret, publicURL }) : undefined;
+const auth = database && secret && publicURL ? createAuth(database.db, { secret, publicURL, adminURL: process.env.ADMIN_URL }) : undefined;
 const repository: Repository = {
  check:async()=>{if(database)await database.db.execute('select 1');},
  readPublic:async()=>{
@@ -26,7 +27,8 @@ const repository: Repository = {
 };
 const port=Number(process.env.PORT??3003);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('PORT must be a valid port');
-const server=serve({fetch:createApp(repository,(process.env.ALLOWED_ORIGINS??'').split(',').map(x=>x.trim()).filter(Boolean),auth).fetch,port,hostname:'0.0.0.0'});
+const origins = Array.from(new Set([...(process.env.ALLOWED_ORIGINS ?? '').split(',').map(x=>x.trim()).filter(Boolean), ...(publicURL ? [new URL(publicURL).origin] : []), ...(process.env.ADMIN_URL ? [new URL(process.env.ADMIN_URL).origin] : [])]));
+const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined).fetch,port,hostname:'0.0.0.0'});
 console.log(`LEEK API listening on ${port} (${demo?'DEMO':'database'})`);
 let closing=false;
 async function shutdown(){if(closing)return;closing=true;server.close();await database?.close();process.exit(0);}

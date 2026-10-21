@@ -15,12 +15,12 @@
     "@leek/auth": "workspace:*",
     "@leek/contracts": "workspace:*",
     "@leek/db": "workspace:*",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "drizzle-orm": "0.45.4"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.14",
     "@leek/config": "workspace:*",
-    "drizzle-orm": "0.45.4",
     "tsup": "^8.5.0",
     "tsx": "^4.20.6"
   }

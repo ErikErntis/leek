@@ -1,5 +1,3 @@
-import { WorkspaceShell, StatCard } from '@leek/ui';
-import { Building2, FileCheck2, BriefcaseBusiness } from 'lucide-react';
-import { demoCompanies, demoJobs } from '@leek/contracts/demo';
-import { CompaniesTable } from '../components/companies';
-export default function Admin(){return <WorkspaceShell kind="admin" active="/" siteUrl={process.env.SITE_URL}><div className="workspace-heading"><div><h1>Piirkonna tegemised, ühes vaates.</h1><p>LEEKi ettevõtted, sisu ja avaldamise ülevaade.</p></div></div><div className="stats-grid"><StatCard title="Ettevõtteid" value={String(demoCompanies.length)} detail="Näidisandmed" icon={<Building2/>}/><StatCard title="Ülevaatust ootab" value="0" detail="Näidisandmed" icon={<FileCheck2/>}/><StatCard title="Töökuulutusi" value={String(demoJobs.length)} detail="Näidisandmed" icon={<BriefcaseBusiness/>}/></div><section className="panel"><div className="panel-heading"><h2>Ettevõtete ülevaade</h2><a href="/ettevotted" className="text-link">Kõik ettevõtted →</a></div><CompaniesTable/></section><p className="notice-panel" style={{marginTop:24}}>Administraatori demovaade. Päris kasutajate, kinnitamiste ja maksete haldus lisandub koos autentimise ja õiguste kontrolliga.</p></WorkspaceShell>;}
+import { redirect } from 'next/navigation';
+import { requireAdmin } from '../lib/data';
+export default async function Admin(){await requireAdmin();redirect('/ulevaatus');}

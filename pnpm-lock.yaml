@@ -63,6 +63,9 @@ importers:
       '@leek/db':
         specifier: workspace:*
         version: link:../../packages/db
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@electric-sql/pglite@0.3.14)(kysely@0.29.7)(postgres@3.4.9)
       hono:
         specifier: 4.13.13
         version: 4.13.13
@@ -73,9 +76,6 @@ importers:
       '@leek/config':
         specifier: workspace:*
         version: link:../../packages/config
-      drizzle-orm:
-        specifier: 0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.3.14)(kysely@0.29.7)(postgres@3.4.9)
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(postcss@8.5.23)(tsx@4.23.15)(typescript@5.9.3)

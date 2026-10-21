@@ -1,6 +1,6 @@
-import { categories } from '@leek/contracts';
+import { categories, employeeBands } from '@leek/contracts';
+export { employeeBands } from '@leek/contracts';
 
-export const employeeBands = ['1', '2–9', '10–49', '50–249', '250 või rohkem'] as const;
 export const emptyCompanyValues = {
   name: '', registrationCode: '', category: '', additionalCategories: [] as string[],
   municipality: '', settlement: '', address: '', email: '', phone: '', website: '',

@@ -12,6 +12,9 @@ import { useRouter } from 'next/navigation';
 const steps = ['Ettevõtte andmed', 'Asukoht ja kontaktid', 'Tutvustus'];
 
 export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
+  const [sending, setSending] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const pending = useRef(false);
   const id = useId();
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
@@ -38,8 +41,10 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
     requestAnimationFrame(() => heading.current?.focus());
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending.current) return;
+    setSubmitError('');
     const all = validateCompany(values);
     const relevant = step === 2 ? Object.keys(all) as (keyof CompanyValues)[] : stepFields[step]!.filter(key => all[key]);
     const first = relevant[0];
@@ -51,7 +56,21 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
       return;
     }
     if (step < 2) move(step + 1);
-    else router.push(selectedPlan ? `/ettevote/valmis?pakett=${encodeURIComponent(selectedPlan.id)}` : '/ettevote/valmis'); // Preview only; no company is saved.
+    else {
+      pending.current = true;
+      setSending(true);
+      try {
+        const response = await fetch('/api/companies', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...values, requestedPlan: selectedPlan?.id ?? 'free' }), signal: AbortSignal.timeout(25000) });
+        const result = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(response.status === 401 ? 'Sessioon on aegunud. Palun logi uuesti sisse.' : result?.error ?? 'Saatmine ebaõnnestus. Palun proovi uuesti.');
+        if (typeof result?.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(result.id)) throw new Error('Salvestuse vastust ei saanud kontrollida. Proovi uuesti.');
+        router.push(`/ettevote/valmis?id=${encodeURIComponent(result.id)}`);
+      } catch (error) {
+        setSubmitError(error instanceof Error && !['TimeoutError','TypeError'].includes(error.name) ? error.message : 'Ühendus ebaõnnestus. Sisestatud andmed on alles; proovi uuesti.');
+        setSending(false);
+        pending.current = false;
+      }
+    }
   }
 
   function field(key: keyof CompanyValues, label: string, options: { type?: string; optional?: boolean; max?: number; placeholder?: string; autoComplete?: string; multiline?: boolean } = {}) {
@@ -79,9 +98,10 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
           <div className={styles.plan}><small>{selectedPlan ? 'VALITUD PAKETT' : 'ETTEVÕTTE PAKETT'}</small><strong>{selectedPlan ? selectedPlan.name : 'Paketi saad valida hiljem'}</strong>{selectedPlan && <p>{formatAnnualPrice(selectedPlan.annualPrice)} / aastas · esialgne hind</p>}<p>Paketti saad jooksvalt vahetada. Tasulise paketi eest tasumine toimub pärast ettevõtte konto kinnitamist.</p></div>
         </aside>
         <section className={styles.panel} aria-labelledby={`${id}-title`}>
-          <div className={styles.preview}>Vormi eelvaade · andmeid ei saadeta ega salvestata.</div>
+          <div className={styles.preview}>Andmed saadetakse LEEKi haldurile ülevaatamiseks. Ettevõte avaldatakse pärast kinnitamist.</div>
           <div className={styles.panelTitle}><span>0{step + 1} / 03</span><h2 ref={heading} tabIndex={-1} id={`${id}-title`}>{steps[step]}</h2><p>{['Alustame nimest ja sellest, millega teie ettevõte tegeleb.', 'Aita klientidel teid leida ja meil teiega ühendust võtta.', 'Räägi oma ettevõttest nii, nagu tutvustaksid seda uuele naabrile.'][step]}</p></div>
-          <form ref={form} method="post" noValidate onSubmit={submit}>
+          <form ref={form} method="post" noValidate onSubmit={submit} aria-busy={sending}>
+            <fieldset disabled={sending} className={styles.formBody}>
             {selectedPlan && <input type="hidden" name="pakett" value={selectedPlan.id} />}
             {Object.values(errors).some(Boolean) && <p className={styles.errorSummary} role="alert">Palun kontrolli märgitud välju.</p>}
             {step === 0 && <div className={styles.stack}>
@@ -107,7 +127,9 @@ export function CompanyForm({ selectedPlan }: { selectedPlan?: PricingPlan }) {
               <div data-field="regionConfirmed"><label className={styles.confirm}><input type="checkbox" checked={values.regionConfirmed} onChange={event => update('regionConfirmed', event.target.checked)} aria-invalid={Boolean(errors.regionConfirmed)} aria-describedby={errors.regionConfirmed ? `${id}-region-error` : undefined} /><span>Kinnitan, et ettevõte tegutseb Loode-Eestis.</span></label>{errors.regionConfirmed && <p id={`${id}-region-error`} className={styles.error}>{errors.regionConfirmed}</p>}</div>
               <div className={styles.nextNote}><strong>Mis saab edasi?</strong><p>Pärast esitamist vaatab LEEKi haldur ettevõtte andmed üle. Tasulise paketi eest saad tasuda pärast ettevõtte konto kinnitamist.</p></div>
             </div>}
-            <div className={styles.actions}>{step > 0 ? <button type="button" onClick={() => move(step - 1)} className={styles.back}><ArrowLeft size={17} />Tagasi</button> : <span /> }<button type="submit" disabled={!ready} className={styles.submit}>{step === 2 ? 'Esita ettevõte kinnitamiseks' : 'Jätka'}<ArrowRight size={17} aria-hidden="true" /></button></div>
+            <div className={styles.actions}>{step > 0 ? <button type="button" onClick={() => move(step - 1)} className={styles.back}><ArrowLeft size={17} />Tagasi</button> : <span /> }<button type="submit" disabled={!ready || sending} className={styles.submit}>{sending ? 'Saadan andmeid…' : step === 2 ? 'Esita ettevõte kinnitamiseks' : 'Jätka'}<ArrowRight size={17} aria-hidden="true" /></button></div>
+            </fieldset>
+            {submitError && <p role="alert" className={styles.errorSummary}>{submitError}</p>}
           </form>
         </section>
       </div>

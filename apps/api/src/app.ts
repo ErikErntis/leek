@@ -4,8 +4,11 @@ import { secureHeaders } from 'hono/secure-headers';
 import { bodyLimit } from 'hono/body-limit';
 import { companySchema, publicProjection, directoryQuerySchema, filterCompanies, type PublicData } from '@leek/contracts';
 export type Repository = { readPublic: () => Promise<PublicData>; check: () => Promise<void> };
-export type AuthHandler = { handler: (request: Request) => Promise<Response> };
-export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler) {
+import type { createAuth } from '@leek/auth/server';
+import { companyRoutes } from './company-routes';
+import type { createCompanyService } from './company-service';
+export type AuthHandler = Pick<ReturnType<typeof createAuth>, 'handler' | 'api'>;
+export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>) {
  const app = new Hono();
  app.use('*',secureHeaders());
  app.use('/api/auth/*', bodyLimit({ maxSize: 16384, onError: c => c.json({ error: 'Liiga suur päring' }, 413) }));
@@ -21,6 +24,7 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
   return auth.handler(new Request(c.req.raw, { headers }));
  });
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:undefined,allowMethods:['GET','OPTIONS']}));
+ app.route('/', companyRoutes(auth, companyService, origins));
  app.get('/health',async c=>{try {await repository.check();return c.json({status:'ok'});}catch{return c.json({status:'unavailable'},503);}});
  app.get('/v1/public',async c=>c.json(publicProjection(await repository.readPublic())));
  app.get('/v1/companies',async c=>{const q=directoryQuerySchema.safeParse(c.req.query());if(!q.success)return c.json({error:'Vigased otsinguparameetrid'},400);const data=publicProjection(await repository.readPublic());return c.json({items:filterCompanies(data.companies,q.data),source:data.source});});

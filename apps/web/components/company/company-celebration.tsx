@@ -28,24 +28,24 @@ function CelebrationMark() {
   </div>;
 }
 
-export function CompanyCelebration({ selectedPlan }: { selectedPlan?: PricingPlan }) {
+export function CompanyCelebration({ selectedPlan, companyName, status, reviewNote }: { selectedPlan?: PricingPlan; companyName: string; status: 'draft' | 'pending' | 'published' | 'rejected'; reviewNote: string }) {
   const [celebration, setCelebration] = useState(0);
   return <div className={styles.page}>
-    <div key={celebration} className={styles.confetti} aria-hidden="true">{confetti.map((style, index) => <i key={index} style={style} className={index % 3 === 0 ? styles.round : undefined} />)}</div>
+    <div key={celebration} hidden={status === 'rejected'} className={styles.confetti} aria-hidden="true">{confetti.map((style, index) => <i key={index} style={style} className={index % 3 === 0 ? styles.round : undefined} />)}</div>
     <section className={styles.hero} aria-labelledby="celebration-title">
       <div className={styles.topline}><span>LOODE-EESTI ETTEVÕTJATELE</span><span>UUS PEATÜKK <MoveUpRight size={13} aria-hidden="true" /></span></div>
       <div className={styles.heroGrid}>
         <div className={styles.copy}>
-          <span className={styles.eyebrow}><span /> SEE VÄÄRIB VÄIKEST TÄHISTAMIST</span>
-          <h1 id="celebration-title"><span>Hea töö.</span><span>Siit algab</span><span className={styles.green}>koostöö<span className={styles.period}>.</span></span></h1>
-          <p className={styles.lead}>Suured asjad algavad kohalikest tegijatest.<br />Ja sina oled üks neist.</p>
-          <p className={styles.support}>Ettevõtte tutvustus on koos. Järgmine peatükk? Uued tutvused, ühised ideed ja rohkem võimalusi siinsamas, Loode-Eestis.</p>
+          <span className={styles.eyebrow}><span /> {status === 'rejected' ? 'VAATAME VEEL KORD ÜLE' : 'SEE VÄÄRIB VÄIKEST TÄHISTAMIST'}</span>
+          <h1 id="celebration-title"><span>{status === 'rejected' ? 'Vaatame' : 'Hea töö.'}</span><span>{status === 'rejected' ? 'veel kord' : 'Siit algab'}</span><span className={styles.green}>{status === 'rejected' ? 'üle' : 'koostöö'}<span className={styles.period}>.</span></span></h1>
+          <p className={styles.lead}>{status === 'rejected' ? 'Ettevõtte taotlus vajab tähelepanu.' : <>Suured asjad algavad kohalikest tegijatest.<br />Ja sina oled üks neist.</>}</p>
+          <p className={styles.support}><strong>{companyName}</strong> — ettevõtte andmed on salvestatud. Järgmine peatükk? Uued tutvused, ühised ideed ja rohkem võimalusi siinsamas, Loode-Eestis.</p>
           <div className={styles.actions}><a href="/ettevotted" className={styles.primary}>Avasta teisi tegijaid <ArrowRight size={18} aria-hidden="true" /></a><a href="/klubist" className={styles.secondary}>Tuttavaks LEEKiga <ArrowUpRight size={17} aria-hidden="true" /></a></div>
-          <button className={styles.replay} type="button" onClick={() => setCelebration(value => value + 1)}><RotateCcw size={13} aria-hidden="true" />Veel üks säde</button>
+          <button hidden={status === 'rejected'} className={styles.replay} type="button" onClick={() => setCelebration(value => value + 1)}><RotateCcw size={13} aria-hidden="true" />Veel üks säde</button>
         </div>
         <CelebrationMark />
       </div>
-      <aside className={styles.preview}><span className={styles.previewLabel}>EELVAADE</span><p>See on liitumise lõppvaate eelvaade. Ettevõtte andmeid ei ole veel salvestatud ega kinnitamiseks saadetud.</p></aside>
+      <aside className={styles.preview}><span className={styles.previewLabel}>{status === 'published' ? 'KINNITATUD' : status === 'rejected' ? 'TAGASI LÜKATUD' : 'ÜLEVAATAMISEL'}</span><p>{status === 'published' ? 'LEEKi haldur kinnitas ettevõtte. Ettevõtte profiil on nüüd avalikus kataloogis.' : status === 'rejected' ? `Ettevõtte taotlus lükati tagasi. Põhjus: ${reviewNote}` : 'Ettevõtte andmed on saadetud LEEKi haldurile ülevaatamiseks. Praegu profiili avalikus kataloogis veel ei kuvata.'}</p></aside>
     </section>
     <section className={styles.next} aria-labelledby="next-title">
       <div className={styles.nextInner}>

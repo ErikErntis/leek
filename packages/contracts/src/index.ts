@@ -4,7 +4,7 @@ export type Plan = z.infer<typeof planSchema>;
 export const companySchema = z.object({
   id: z.string().uuid(), slug: z.string(), name: z.string(), registrationCode: z.string(),
   category: z.string(), municipality: z.string(), tagline: z.string(), description: z.string(),
-  email: z.string().email(), phone: z.string(), website: z.string().url(), address: z.string(),
+  email: z.string().email(), phone: z.string(), website: z.union([z.literal(''), z.string().url()]), address: z.string(),
   image: z.string(), services: z.array(z.string()), plan: planSchema,
   status: z.enum(['draft', 'pending', 'published', 'rejected']), featured: z.boolean(),
 });
@@ -30,3 +30,30 @@ export function publicProjection(data:PublicData, now=Date.now()):PublicData {
  const active=(x:{companyId:string;status:string;expiresAt:string})=>ids.has(x.companyId)&&x.status==='published'&&Date.parse(x.expiresAt)>now;
  return publicDataSchema.parse({companies,jobs:data.jobs.filter(active),offers:data.offers.filter(active),source:data.source});
 }
+
+export const employeeBands = ['1', '2–9', '10–49', '50–249', '250 või rohkem'] as const;
+const phoneInput = z.string().trim().max(30).refine(value => !value || (/^[+\d\s()-]+$/.test(value) && value.replace(/\D/g, '').length >= 5), 'Kontrolli telefoninumbrit.');
+const websiteInput = z.string().trim().max(500).refine(value => {
+ if (!value) return true;
+ try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) && url.hostname.includes('.') && !url.username && !url.password; } catch { return false; }
+}, 'Kontrolli kodulehe aadressi.');
+export const companySubmissionSchema = z.object({
+ name:z.string().trim().min(2).max(200), registrationCode:z.string().trim().regex(/^\d{8}$/),
+ category:z.enum(categories), additionalCategories:z.array(z.enum(categories)).max(4),
+ municipality:z.string().trim().min(2).max(100), settlement:z.string().trim().min(2).max(100), address:z.string().trim().max(200),
+ email:z.string().trim().email().max(254), phone:phoneInput, website:websiteInput,
+ contactName:z.string().trim().min(2).max(100), contactRole:z.string().trim().max(100), contactEmail:z.string().trim().email().max(254), contactPhone:phoneInput,
+ employees:z.enum(employeeBands), tagline:z.string().trim().min(10).max(160), description:z.string().trim().min(30).max(3000),
+ regionConfirmed:z.literal(true), requestedPlan:planSchema.default('free'),
+}).strict().refine(value => !value.additionalCategories.includes(value.category) && new Set(value.additionalCategories).size === value.additionalCategories.length, {path:['additionalCategories'],message:'Kontrolli lisakategooriaid.'});
+export type CompanySubmission = z.infer<typeof companySubmissionSchema>;
+export const privateCompanySchema = companySchema.extend({
+ additionalCategories:z.array(z.string()), settlement:z.string(), employees:z.string(), requestedPlan:planSchema,
+ createdAt:z.string(), reviewedAt:z.string().nullable(), reviewNote:z.string(),
+ contact:z.object({name:z.string(),role:z.string(),email:z.string(),phone:z.string()}).nullable(),
+});
+export type PrivateCompany = z.infer<typeof privateCompanySchema>;
+export const companySummarySchema = companySchema.pick({id:true,slug:true,name:true,category:true,municipality:true,status:true}).extend({requestedPlan:planSchema,createdAt:z.string()});
+export type CompanySummary = z.infer<typeof companySummarySchema>;
+export const companyListSchema = z.object({items:z.array(companySummarySchema),hasMore:z.boolean()});
+export const reviewDecisionSchema = z.object({decision:z.enum(['approve','reject']),note:z.string().trim().max(1000).default('')}).strict().refine(value=>value.decision!=='reject'||value.note.length>=5,{path:['note'],message:'Lisa tagasilükkamise põhjus (vähemalt 5 märki).'});

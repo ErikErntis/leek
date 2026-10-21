@@ -75,3 +75,5 @@
 .result p { margin: 0; font-size: 12px; line-height: 1.8; }
 @media (max-width: 950px) { .layout { grid-template-columns: 220px minmax(0, 1fr); gap: 28px; } .panel { padding: 26px; } .grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .page { padding-top: 30px; } .shell { width: min(600px, calc(100% - 32px)); } .layout { grid-template-columns: 1fr; gap: 24px; } .sidebar { padding: 0; } .intro { margin-bottom: 25px; } .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 0; } .steps li { flex-direction: column; align-items: start; gap: 9px; } .steps small { display: none; } .steps strong { font-size: 11px; line-height: 1.6; } .note, .plan { display: none; } .panel { padding: 24px 19px; } .field input, .field textarea { font-size: 16px; } .actions { gap: 10px; } .actions button { padding: 12px; font-size: 11px; } }
+
+.formBody { display: contents; border: 0; padding: 0; margin: 0; min-width: 0; }
