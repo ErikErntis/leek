@@ -52,7 +52,7 @@ export function Brand({ href = '/' }: { href?: string }) {
       <strong>LEEK</strong>
 
       <span>
-        Loode-Eesti
+        Loode-Eesti 
         <br />
         ettevõtlusklubi
       </span>
