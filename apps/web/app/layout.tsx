@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Footer, DemoNotice } from '@leek/ui';
 import '@leek/ui/styles.css';
+import './theme.css';
 import { SiteHeader } from '../components/site-header';
 import { siteUrl } from '../lib/data';
 

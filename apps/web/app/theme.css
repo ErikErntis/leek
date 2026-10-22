@@ -1,0 +1,17 @@
+/* Public LEEK theme: petrol + warm yellow. */
+:root{--bg:#faf9f5;--paper:#fff;--ink:#073b4c;--muted:#52717b;--line:#d9e3e3;--petrol:#005b63;--accent:#fff064;--accent-hover:#ebd94b;--orange:var(--accent);--orange-dark:var(--accent-hover);--green:var(--petrol);--soft:#eaf3f2}
+.button{color:var(--ink)}
+.brand svg{color:var(--ink);fill:var(--ink);stroke:var(--ink)}
+.eyebrow,.desktop-nav a:hover,.text-link:hover,.category-strip a:hover,.location svg,.search-field>svg,.results-heading a,.breadcrumb a:hover{color:var(--petrol)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline-color:var(--petrol)}
+.hero-copy>p{color:var(--muted)}
+.hero-signature{color:var(--petrol)}
+.hero-signature i{background:var(--petrol)}
+.hero-note{background:var(--petrol)!important;color:var(--accent)}
+.hero-note svg,.hero-note small{color:var(--accent)}
+.hero-coast:after{background:linear-gradient(transparent,#005b6380)}
+.badge.featured,.badge.orange{background:var(--accent);color:var(--ink)}
+.card-category{color:var(--petrol)}
+.company-card{background:var(--paper)}
+.community-banner .eyebrow{color:var(--accent)}
+.community-banner p{color:#d9eeee}

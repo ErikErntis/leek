@@ -1,7 +1,7 @@
-.notice { display: flex; align-items: flex-start; gap: 15px; padding: 21px 24px; border: 1px solid #dce3d5; border-radius: 9px; background: #eff3e9; color: #345133; }
+.notice { display: flex; align-items: flex-start; gap: 15px; padding: 21px 24px; border: 1px solid #d5e1e3; border-radius: 9px; background: #e9f2f3; color: #334d51; }
 .notice > svg { flex-shrink: 0; margin-top: 2px; stroke-width: 1.65; }
 .notice strong { display: block; font-size: 14px; font-weight: 650; line-height: 1.5; margin-bottom: 4px; }
-.notice p { margin: 0; color: #52664a; font-size: 13px; line-height: 1.7; }
-.compact { padding: 11px 13px; gap: 9px; background: #f6f8f2; border-color: #e4e9dd; margin: 0 0 20px; }
+.notice p { margin: 0; color: #4a6266; font-size: 13px; line-height: 1.7; }
+.compact { padding: 11px 13px; gap: 9px; background: #f2f7f8; border-color: #dde7e9; margin: 0 0 20px; }
 .compact p { font-size: 11px; line-height: 1.65; }
 @media (max-width: 650px) { .notice { padding: 17px; gap: 12px; } .notice p { font-size: 12px; } .compact { padding: 11px 12px; gap: 8px; } .compact p { font-size: 11px; } }
