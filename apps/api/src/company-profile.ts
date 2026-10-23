@@ -1,12 +1,12 @@
 import { and, eq, desc, inArray } from 'drizzle-orm';
-import { companies, companyContacts, companyProfileRevisions, memberships, type createDatabase } from '@leek/db';
+import { companies, companyContacts, companyProfileRevisions, companyMedia, memberships, type createDatabase } from '@leek/db';
 import { ownProfileSchema, type PublicProfileInput, type ProfileSave } from '@leek/contracts';
 import { CompanyError } from './company-service';
 
 type Database = ReturnType<typeof createDatabase>['db'];
-const fields = ['name','brandName','category','additionalCategories','municipality','settlement','address','email','phone','website','employees','tagline','description'] as const;
+const fields = ['image','logo','name','brandName','category','additionalCategories','municipality','settlement','address','email','phone','website','employees','tagline','description'] as const;
 function equalProfile(a: Record<string, unknown>, b: Record<string, unknown>) {
- return fields.every(key => JSON.stringify(a[key]) === JSON.stringify(b[key]));
+ return fields.every(key => JSON.stringify(a[key] ?? '') === JSON.stringify(b[key] ?? a[key] ?? ''));
 }
 export function createProfileService(db: Database) {
  async function membership(tx: Database, userId: string, companyId: string) {
@@ -28,6 +28,14 @@ export function createProfileService(db: Database) {
     await membership(tx,userId,id);
     const [company] = await tx.select().from(companies).where(eq(companies.id,id)).for('update');
     if (!company) throw new CompanyError(404,'Ettevõtet ei leitud.');
+    input = {...input, publicProfile:{...input.publicProfile,image:input.publicProfile.image??company.image,logo:input.publicProfile.logo??company.logo}};
+    for (const kind of ['image','logo'] as const) {
+     const value=input.publicProfile[kind];
+     if(value===company[kind] || (kind==='logo' && value===''))continue;
+     const mediaId=value?.match(/^\/api\/media\/([a-f0-9-]{36})$/)?.[1];
+     const [asset]=mediaId?await tx.select().from(companyMedia).where(and(eq(companyMedia.id,mediaId),eq(companyMedia.companyId,id),eq(companyMedia.kind,kind))):[];
+     if(!asset)throw new CompanyError(400,'Laadi pilt üles selle ettevõtte profiilis.');
+    }
     if (company.profileVersion !== input.version) throw new CompanyError(409,'Ettevõtte andmed on vahepeal muutunud. Laadi profiil uuesti ja võrdle oma muudatusi.');
     const [pending] = await tx.select().from(companyProfileRevisions).where(and(eq(companyProfileRevisions.companyId,id),eq(companyProfileRevisions.status,'pending')));
     if (company.status === 'pending' && !equalProfile(company,input.publicProfile)) throw new CompanyError(409,'Ettevõtte esmane taotlus on ülevaatamisel. Avalikke andmeid saab muuta pärast otsust.');

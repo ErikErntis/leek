@@ -1,6 +1,13 @@
 import { createDatabase } from './index';
 import { sql } from 'drizzle-orm';
 export const billingMigration = `
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS logo text NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS company_media (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('image','logo')), key text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS company_media_company_idx ON company_media(company_id);
+
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS paid_until timestamptz;
 CREATE TABLE IF NOT EXISTS billing_checkouts (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,

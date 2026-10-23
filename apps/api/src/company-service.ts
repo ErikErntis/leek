@@ -4,7 +4,7 @@ import { privateCompanySchema, type CompanySubmission } from '@leek/contracts';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 export class CompanyError extends Error {
-  constructor(public status: 404 | 409 | 429, message: string) { super(message); }
+  constructor(public status: 400 | 404 | 409 | 429, message: string) { super(message); }
 }
 
 export function createCompanyService(db: Database) {

@@ -5,7 +5,7 @@ export const companySchema = z.object({
   id: z.string().uuid(), slug: z.string(), name: z.string(), brandName: z.string().optional(), registrationCode: z.string(),
   category: z.string(), municipality: z.string(), tagline: z.string(), description: z.string(),
   email: z.string().email(), phone: z.string(), website: z.union([z.literal(''), z.string().url()]), address: z.string(),
-  image: z.string(), services: z.array(z.string()), plan: planSchema,
+  logo: z.string().optional(), image: z.string(), services: z.array(z.string()), plan: planSchema,
   status: z.enum(['draft', 'pending', 'published', 'rejected']), featured: z.boolean(),
 });
 export type Company = z.infer<typeof companySchema>;
@@ -60,6 +60,7 @@ export const reviewDecisionSchema = z.object({decision:z.enum(['approve','reject
 
 
 export const publicProfileInputSchema = z.object({
+  image: z.string().max(200).optional(), logo: z.string().max(200).optional(),
   name: z.string().trim().min(2).max(200),
   brandName: z.string().trim().max(120),
   category: z.enum(categories),

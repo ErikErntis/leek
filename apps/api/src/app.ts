@@ -11,7 +11,7 @@ import type { createAuth } from '@leek/auth/server';
 import { companyRoutes } from './company-routes';
 import type { createCompanyService } from './company-service';
 export type AuthHandler = Pick<ReturnType<typeof createAuth>, 'handler' | 'api'>;
-export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>) {
+export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono) {
  const app = new Hono();
  app.use('*',secureHeaders());
  app.use('/api/auth/*', bodyLimit({ maxSize: 16384, onError: c => c.json({ error: 'Liiga suur päring' }, 413) }));
@@ -36,6 +36,7 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
   return c.json({received:true});
  });
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:undefined,allowMethods:['GET','OPTIONS']}));
+ if(media)app.route('/',media);
  app.route('/', companyRoutes(auth, companyService, origins, billing, profiles));
  app.get('/health',async c=>{try {await repository.check();return c.json({status:'ok'});}catch{return c.json({status:'unavailable'},503);}});
  app.get('/v1/public',async c=>c.json(publicProjection(await repository.readPublic())));
