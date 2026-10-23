@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Footer, DemoNotice } from '@leek/ui';
 import '@leek/ui/styles.css';
 import './theme.css';
+import { SiteChrome } from '../components/site-chrome';
 import { SiteHeader } from '../components/site-header';
 import { siteUrl } from '../lib/data';
 
@@ -23,10 +24,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <html lang="et">
       <body>
         <a href="#main" className="skip-link">Liigu põhisisu juurde</a>
-        {process.env.DEMO_MODE === 'true' && <DemoNotice />}
-        <SiteHeader />
-        <main id="main">{children}</main>
-        <Footer />
+        <SiteChrome
+          header={<>{process.env.DEMO_MODE === 'true' && <DemoNotice />}<SiteHeader /></>}
+          footer={<Footer />}
+        >
+          {children}
+        </SiteChrome>
       </body>
     </html>
   );

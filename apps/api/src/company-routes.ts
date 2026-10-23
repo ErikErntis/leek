@@ -1,3 +1,4 @@
+import { logError } from './log-error';
 import type { createBilling } from './billing';
 import { planSchema } from '@leek/contracts';
 import { Hono } from 'hono';
@@ -78,7 +79,7 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
   });
   routes.onError((error, c) => {
     if (error instanceof CompanyError) return c.json({ error: error.message }, error.status);
-    console.error('Company request failed', error.name);
+    logError('Company request failed', error);
     return c.json({ error: 'Andmeid ei saanud töödelda. Proovi uuesti.' }, 503);
   });
   return routes;

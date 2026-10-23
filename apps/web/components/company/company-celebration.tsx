@@ -52,7 +52,7 @@ export function CompanyCelebration({
           <h1 id="celebration-title"><span>Hea töö.</span><span>Siit algab</span><span className={styles.green}>koostöö<span className={styles.period}>.</span></span></h1>
           <p className={styles.lead}>Suured asjad algavad kohalikest tegijatest.<br />Ja sina oled üks neist.</p>
           <p className={styles.support}>Ettevõtte tutvustus on koos. Järgmine peatükk? Uued tutvused, ühised ideed ja rohkem võimalusi siinsamas, Loode-Eestis.</p>
-          <div className={styles.actions}><a href="/ettevotted" className={styles.primary}>Avasta teisi tegijaid <ArrowRight size={18} aria-hidden="true" /></a><a href="/klubist" className={styles.secondary}>Tuttavaks LEEKiga <ArrowUpRight size={17} aria-hidden="true" /></a></div>
+          <div className={styles.actions}><a href="/portaal" className={styles.primary}>Ava ettevõtte portaal <ArrowRight size={18} aria-hidden="true" /></a><a href="/klubist" className={styles.secondary}>Tuttavaks LEEKiga <ArrowUpRight size={17} aria-hidden="true" /></a></div>
           <button className={styles.replay} type="button" onClick={() => setCelebration(value => value + 1)}><RotateCcw size={13} aria-hidden="true" />Veel üks säde</button>
         </div>
         <CelebrationMark />

@@ -11,8 +11,8 @@ import {billingMigration} from '../../../packages/db/src/migrate-billing';
 
 test('package ownership, approval, checkout reuse, verified payment, replay, free switch and SSO expiry',async()=>{
  const client=new PGlite();
- const original={key:process.env.STRIPE_SECRET_KEY,secret:process.env.STRIPE_WEBHOOK_SECRET,portal:process.env.PORTAL_URL};
- process.env.STRIPE_SECRET_KEY='sk_test_local';process.env.STRIPE_WEBHOOK_SECRET='whsec_test';process.env.PORTAL_URL='https://portal.test';
+ const original={key:process.env.STRIPE_SECRET_KEY,secret:process.env.STRIPE_WEBHOOK_SECRET,portal:process.env.BETTER_AUTH_URL};
+ process.env.STRIPE_SECRET_KEY='sk_test_local';process.env.STRIPE_WEBHOOK_SECRET='whsec_test';process.env.BETTER_AUTH_URL='https://web.test';
  try{
   for(const name of ['0000_stormy_paibok.sql','0001_flaky_nebula.sql','0002_moaning_zarda.sql'])await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`,import.meta.url),'utf8'));
   await client.exec(billingMigration);await client.exec(billingMigration);
@@ -20,12 +20,12 @@ test('package ownership, approval, checkout reuse, verified payment, replay, fre
   const [user]=await db.insert(schema.users).values({name:'Owner',email:'owner@test.ee'}).returning();
   const [company]=await db.insert(schema.companies).values({name:'Firma',slug:'firma',registrationCode:'12345678',category:'Teenused',municipality:'Harku vald',email:'firma@test.ee',website:'',requestedPlan:'visibility',status:'pending'}).returning();
   await db.insert(schema.memberships).values({userId:user!.id,companyId:company!.id,role:'owner'});
-  const sessions=new Map<string,{id:string;url:string;status:string}>();let requests=0;
+  const sessions=new Map<string,{id:string;url:string;status:string;success_url:string}>();let requests=0;
   const transport:typeof fetch=async(url,init)=>{
    const path=String(url).split('/v1/')[1]!;
    if(path==='checkout/sessions'){
-    const body=new URLSearchParams(String(init?.body));assert.equal(body.get('line_items[0][price_data][unit_amount]'),'5000');
-    const id=`cs_test_${++requests}`;const session={id,url:`https://checkout.stripe.com/c/pay/${id}`,status:'open'};sessions.set(id,session);return Response.json(session);
+    const body=new URLSearchParams(String(init?.body));assert.equal(body.get('line_items[0][price_data][unit_amount]'),'5000');assert.ok(body.get('success_url')?.startsWith('https://web.test/portaal/pakett?'));assert.ok(body.get('cancel_url')?.startsWith('https://web.test/portaal/pakett?'));
+    const id=`cs_test_${++requests}`;const session={id,url:`https://checkout.stripe.com/c/pay/${id}`,status:'open',success_url:body.get('success_url')!};sessions.set(id,session);return Response.json(session);
    }
    const id=path.split('/')[2]!;const session=sessions.get(id)!;if(path.endsWith('/expire'))session.status='expired';return Response.json(session);
   };
@@ -46,9 +46,10 @@ test('package ownership, approval, checkout reuse, verified payment, replay, fre
   await billing.webhook(event);assert.equal((await billing.overview(uid)).companies[0]!.paidUntil,activated.paidUntil);
   await assert.rejects(billing.choose(uid,id,'free'),/Aktiivse/);
   await client.query("UPDATE companies SET paid_until=now()-interval '1 second' WHERE id=$1",[id]);assert.equal((await billing.overview(uid)).companies[0]!.plan,'free');
+  await billing.checkout(uid,id);const stale=sessions.get('cs_test_3')!;stale.success_url='https://retired-portal.test/pakett';await billing.checkout(uid,id);assert.equal(stale.status,'expired');assert.equal(requests,4);
   const transfer=createPortalTransfer(db);const {code}=await transfer.issue('__Secure-leek.session_token=signed; other=secret');assert.match(code,/^[a-f0-9]{64}$/);assert.equal(await transfer.redeem(code),'__Secure-leek.session_token=signed');assert.equal(await transfer.redeem(code),undefined);
   const expired=await transfer.issue('leek.session_token=signed');await client.exec("UPDATE portal_tickets SET expires_at=now()-interval '1 second'");assert.equal(await transfer.redeem(expired.code),undefined);
   const raw=JSON.stringify(event);const timestamp=Math.floor(Date.now()/1000);const signature=createHmac('sha256','secret').update(`${timestamp}.${raw}`).digest('hex');
   assert.equal(verifyStripeSignature(raw,`t=${timestamp},v1=${signature}`,'secret'),true);assert.equal(verifyStripeSignature(raw+'x',`t=${timestamp},v1=${signature}`,'secret'),false);assert.equal(verifyStripeSignature(raw,`t=${timestamp},v1=${signature}`,'secret',Date.now()+400000),false);
- }finally{await client.close();for(const [key,value]of Object.entries({STRIPE_SECRET_KEY:original.key,STRIPE_WEBHOOK_SECRET:original.secret,PORTAL_URL:original.portal})){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+ }finally{await client.close();for(const [key,value]of Object.entries({STRIPE_SECRET_KEY:original.key,STRIPE_WEBHOOK_SECRET:original.secret,BETTER_AUTH_URL:original.portal})){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
 });

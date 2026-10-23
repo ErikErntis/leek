@@ -1,4 +1,3 @@
-import { createPortalTransfer } from './portal-transfer';
 import { createBilling } from './billing';
 import { serve } from '@hono/node-server';
 import { createDatabase, companies, jobs, offers } from '@leek/db';
@@ -13,7 +12,7 @@ const database = !demo && process.env.DATABASE_URL ? createDatabase(process.env.
 const secret = process.env.BETTER_AUTH_SECRET;
 const publicURL = process.env.BETTER_AUTH_URL;
 if (!demo && (!secret || !publicURL)) throw new Error('BETTER_AUTH_SECRET and BETTER_AUTH_URL are required outside demo mode');
-const auth = database && secret && publicURL ? createAuth(database.db, { secret, publicURL, adminURL: process.env.ADMIN_URL, portalURL: process.env.PORTAL_URL }) : undefined;
+const auth = database && secret && publicURL ? createAuth(database.db, { secret, publicURL, adminURL: process.env.ADMIN_URL }) : undefined;
 const repository: Repository = {
  check:async()=>{if(database)await database.db.execute('select 1');},
  readPublic:async()=>{
@@ -29,8 +28,8 @@ const repository: Repository = {
 };
 const port=Number(process.env.PORT??3003);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('PORT must be a valid port');
-const origins = Array.from(new Set([...(process.env.ALLOWED_ORIGINS ?? '').split(',').map(x=>x.trim()).filter(Boolean), ...(publicURL ? [new URL(publicURL).origin] : []), ...[process.env.ADMIN_URL, process.env.PORTAL_URL].filter((x): x is string => Boolean(x)).map(x => new URL(x).origin)]));
-const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined, database ? createPortalTransfer(database.db) : undefined).fetch,port,hostname:'0.0.0.0'});
+const origins = Array.from(new Set([...(process.env.ALLOWED_ORIGINS ?? '').split(',').map(x=>x.trim()).filter(Boolean), ...(publicURL ? [new URL(publicURL).origin] : []), ...[process.env.ADMIN_URL].filter((x): x is string => Boolean(x)).map(x => new URL(x).origin)]));
+const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined).fetch,port,hostname:'0.0.0.0'});
 console.log(`LEEK API listening on ${port} (${demo?'DEMO':'database'})`);
 let closing=false;
 async function shutdown(){if(closing)return;closing=true;server.close();await database?.close();process.exit(0);}

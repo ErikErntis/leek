@@ -25,7 +25,7 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
       body, signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) throw new Error(`Stripe request failed: ${response.status}`);
-    return await response.json() as { id: string; url: string; status: string; payment_status: string; amount_total: number; currency: string; client_reference_id: string };
+    return await response.json() as { id: string; url: string; status: string; payment_status: string; amount_total: number; currency: string; client_reference_id: string; success_url?: string };
   }
   async function owner(tx: Database, userId: string, id: string) {
     const [membership] = await tx.select().from(memberships).where(and(eq(memberships.companyId, id), eq(memberships.userId, userId), eq(memberships.role, 'owner')));
@@ -49,7 +49,7 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
     async overview(userId: string) {
       const rows = await db.select({ company: companies }).from(memberships).innerJoin(companies, eq(memberships.companyId, companies.id)).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).orderBy(desc(companies.createdAt));
       const now = new Date();
-      return { companies: rows.map(({ company }) => ({ id: company.id, name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, plan: company.paidUntil && company.paidUntil > now ? company.plan : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.PORTAL_URL) };
+      return { companies: rows.map(({ company }) => ({ id: company.id, name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, plan: company.paidUntil && company.paidUntil > now ? company.plan : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.BETTER_AUTH_URL) };
     },
     async choose(userId: string, id: string, plan: Plan) {
       return db.transaction(async raw => {
@@ -63,7 +63,7 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
       });
     },
     async checkout(userId: string, id: string) {
-      if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.PORTAL_URL) fail('Maksmine pole veel seadistatud. Saad jätkata tasuta paketiga.');
+      if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.BETTER_AUTH_URL) fail('Maksmine pole veel seadistatud. Saad jätkata tasuta paketiga.');
       return db.transaction(async raw => {
         const tx = raw as unknown as Database;
         const company = await owner(tx, userId, id);
@@ -74,13 +74,18 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
         const [existing] = await tx.select().from(billingCheckouts).where(and(eq(billingCheckouts.companyId, id), eq(billingCheckouts.status, 'pending')));
         if (existing?.stripeSessionId) {
           const session = await stripe(`checkout/sessions/${existing.stripeSessionId}`);
-          if (session.status === 'open') return { url: session.url };
+          if (session.status === 'open') {
+            const expectedReturn = `${new URL(process.env.BETTER_AUTH_URL!).origin}/portaal/pakett?company=${id}&payment=success`;
+            if (session.success_url === expectedReturn) return { url: session.url };
+            // A Checkout created before the portal move still points at the retired domain.
+            await stripe(`checkout/sessions/${existing.stripeSessionId}/expire`, new URLSearchParams());
+          }
           if (session.status === 'complete') fail('Makse on töötlemisel. Värskenda lehte mõne hetke pärast.');
           await tx.update(billingCheckouts).set({ status: 'expired' }).where(eq(billingCheckouts.id, existing.id));
         }
         const [record] = await tx.insert(billingCheckouts).values({ companyId: id, plan: plan.id, amount: plan.amount }).returning();
-        const portal = new URL(process.env.PORTAL_URL!).origin;
-        const body = new URLSearchParams({ mode: 'payment', 'payment_method_types[0]': 'card', client_reference_id: record!.id, 'metadata[companyId]': id, 'metadata[plan]': plan.id, 'line_items[0][price_data][currency]': 'eur', 'line_items[0][price_data][unit_amount]': String(plan.amount), 'line_items[0][price_data][product_data][name]': `LEEK ${plan.name} – 1 aasta`, 'line_items[0][quantity]': '1', success_url: `${portal}/pakett?company=${id}&payment=success`, cancel_url: `${portal}/pakett?company=${id}&payment=cancelled` });
+        const portal = new URL(process.env.BETTER_AUTH_URL!).origin;
+        const body = new URLSearchParams({ mode: 'payment', 'payment_method_types[0]': 'card', client_reference_id: record!.id, 'metadata[companyId]': id, 'metadata[plan]': plan.id, 'line_items[0][price_data][currency]': 'eur', 'line_items[0][price_data][unit_amount]': String(plan.amount), 'line_items[0][price_data][product_data][name]': `LEEK ${plan.name} – 1 aasta`, 'line_items[0][quantity]': '1', success_url: `${portal}/portaal/pakett?company=${id}&payment=success`, cancel_url: `${portal}/portaal/pakett?company=${id}&payment=cancelled` });
         const session = await stripe('checkout/sessions', body, record!.id);
         await tx.update(billingCheckouts).set({ stripeSessionId: session.id }).where(eq(billingCheckouts.id, record!.id));
         return { url: session.url };

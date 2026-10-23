@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { emptyAuthValues, validateAuth, type AuthErrors, type AuthMode, type AuthValues } from './validation';
 import styles from './auth.module.css';
+import { authDestination } from '../../lib/auth-destination';
 import type { Plan } from '@leek/contracts';
 
 type PasswordFieldProps = {
@@ -58,10 +59,13 @@ function PasswordField({ id, name, title, value, error, hint, autoComplete, onCh
   );
 }
 
-export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPlanId?: Plan }) {
+export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; selectedPlanId?: Plan; nextPath?: string }) {
   const register = mode === 'register';
   const otherRoute = register ? '/logi-sisse' : '/registreeru';
-  const switchHref = selectedPlanId ? `${otherRoute}?pakett=${encodeURIComponent(selectedPlanId)}` : otherRoute;
+  const switchQuery = new URLSearchParams();
+  if (selectedPlanId) switchQuery.set('pakett', selectedPlanId);
+  if (nextPath) switchQuery.set('next', authDestination(nextPath));
+  const switchHref = otherRoute + (switchQuery.size ? `?${switchQuery}` : '');
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
   const [ready, setReady] = useState(false);
@@ -125,7 +129,9 @@ export function AuthForm({ mode, selectedPlanId }: { mode: AuthMode; selectedPla
         throw new Error(register ? 'Kontot ei saanud luua. Kontrolli andmeid või proovi olemasoleva kontoga sisse logida.' : 'E-post või parool ei ole õige.');
       }
       // A full navigation lets the server read the HttpOnly session cookie immediately.
-      window.location.assign(selectedPlanId ? `/ettevote/lisa?pakett=${encodeURIComponent(selectedPlanId)}` : '/ettevote/lisa');
+      window.location.assign(register
+        ? selectedPlanId ? `/ettevote/lisa?pakett=${encodeURIComponent(selectedPlanId)}` : '/ettevote/lisa'
+        : authDestination(nextPath));
     } catch (error) {
       setServerError(error instanceof Error && error.name !== 'TimeoutError' && error.name !== 'TypeError' ? error.message : 'Ühendus ebaõnnestus. Palun proovi uuesti.');
       setStatus('error');

@@ -1,0 +1,14 @@
+.web-portal .workspace-heading h1{overflow-wrap:anywhere}
+.web-portal .status-panel{margin-bottom:24px}
+.web-portal .status-panel h2{margin:18px 0}
+.web-portal .package-choice{margin-top:26px}
+.web-portal .package-card{text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:15px;min-width:0;background:var(--paper);font:inherit;color:var(--ink);border:1px solid var(--line)}
+.web-portal .package-card.selected{border-color:var(--petrol);box-shadow:inset 0 4px var(--accent)}
+.web-portal .package-card h2{font-size:27px}
+.web-portal .package-price{font-size:34px;font-weight:700;margin:0}
+.web-portal .package-price small{font-size:13px;font-weight:400}
+.web-portal .package-card ul{padding-left:19px;flex:1}
+.web-portal .package-actions{display:flex;gap:14px;flex-wrap:wrap;margin:24px 0}
+.web-portal .package-error{color:#a12e2e}
+.web-portal .package-card:focus-visible{outline:3px solid var(--petrol);outline-offset:4px}
+@media(max-width:800px){.web-portal .package-choice .plans{grid-template-columns:1fr}.web-portal .package-actions .button{width:100%}}

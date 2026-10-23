@@ -1,16 +1,7 @@
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { getSession } from '../../lib/session';
-import { authApiURL } from '../../lib/auth-api';
-import { PortalLogin } from './portal-login';
-export const dynamic='force-dynamic';
-export const metadata={title:'Ava ettevõtte portaal',robots:{index:false,follow:false},referrer:'no-referrer' as const};
-export default async function PortalEntry({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const state=(await searchParams).state;
- const portal=new URL(process.env.PORTAL_URL??'http://localhost:3001').origin;
- if(typeof state!=='string'||!/^[a-f0-9]{64}$/.test(state))redirect(`${portal}/auth/start`);
- if(!await getSession())return <PortalLogin/>;
- const response=await fetch(new URL('/v1/portal-transfer/issue',authApiURL('get-session')),{method:'POST',headers:{origin:new URL(process.env.SITE_URL!).origin,cookie:(await headers()).get('cookie')??'','content-type':'application/json'},body:'{}',cache:'no-store',signal:AbortSignal.timeout(15000)});
- if(!response.ok)throw new Error('Portaali avamine ebaõnnestus. Proovi uuesti.');
- const {code}=await response.json();const target=new URL('/auth/callback',portal);target.searchParams.set('code',code);target.searchParams.set('state',state);redirect(target.toString());
+import {portalData,webOrigin} from '../../lib/portal';
+import {PortalShell} from '../../components/portal/portal-shell';
+import {PackageChoice} from '../../components/portal/package-choice';
+export default async function Dashboard({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
+ const data=await portalData();const query=await searchParams;const company=data.companies.find(c=>c.id===query.company)??data.companies[0];const plan=data.plans.find(p=>p.id===company?.plan);
+ return <PortalShell company={company} active="/"><div className="workspace-heading"><div><span className="eyebrow">SINU ETTEVÕTTE KODU</span><h1>{company?`Tere tulemast, ${company.name}!`:'Tere tulemast LEEKi!'}</h1><p>Kohalikud tegijad. Uued võimalused.</p></div></div>{data.companies.length>1&&<nav aria-label="Vali ettevõte" className="package-actions">{data.companies.map(c=><a href={`/portaal?company=${c.id}`} className="button secondary" key={c.id} aria-current={c.id===company?.id?'page':undefined}>{c.name}</a>)}</nav>}{!company?<section className="panel"><h2>Lisa oma ettevõte</h2><p>Ettevõtte lisamine on tasuta. Keskkond on mõeldud Loode-Eestis tegutsevatele ettevõtetele.</p><a className="button" href={`${webOrigin()}/ettevote/lisa`}>Lisa ettevõte</a></section>:company.status!=='published'?<section className="panel status-panel"><span className="badge">{company.status==='pending'?'OOTAB KINNITAMIST':company.status==='rejected'?'TAGASI LÜKATUD':'MUSTAND'}</span><h2>{company.status==='pending'?'Vaatame sinu ettevõtte andmed üle.':company.status==='rejected'?'Ettevõtte taotlus vajab tähelepanu.':'Ettevõtte lisamine on pooleli.'}</h2><p>{company.status==='pending'?'Anname ettevõttele kinnituse pärast andmete ülevaatust. Tasuda saab alles pärast kinnitamist.':'Ettevõte pole veel avalikus kataloogis nähtav.'}</p>{company.reviewNote&&<p><strong>Halduri tagasiside:</strong> {company.reviewNote}</p>}</section>:company.plan==='free'&&company.requestedPlan!=='free'?<><section className="panel status-panel"><span className="badge">ETTEVÕTE ON KINNITATUD</span><h2>Sinu ettevõte kuulub siia.</h2><p>Aktiveeri valitud pakett või alusta tasuta. Valikut saad enne maksmist muuta.</p></section><PackageChoice company={company} plans={data.plans} available={data.checkoutAvailable}/></>:<section className="panel status-panel"><span className="badge">ETTEVÕTE ON KINNITATUD</span><h2>Sinu ettevõtte töölaud</h2><p>Aktiivne pakett: <strong>{plan?.name??'Alustaja'}</strong>.</p>{company.paidUntil&&company.plan!=='free'&&<p>Kehtib kuni {new Intl.DateTimeFormat('et-EE').format(new Date(company.paidUntil))}.</p>}<div className="package-actions"><a className="button" href={`/portaal/pakett?company=${company.id}`}>Vaata pakette</a><a className="button secondary" href={`${webOrigin()}/ettevotted/${company.slug}`}>Vaata avalikku profiili</a></div><p className="muted">Teenuste halduse ühendame järgmises etapis.</p></section>}</PortalShell>;
 }

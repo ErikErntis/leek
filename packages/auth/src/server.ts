@@ -10,7 +10,7 @@ export function createAuth(db: ReturnType<typeof createDatabase>['db'], config: 
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new Error('Auth requires HTTPS outside local development');
 
   const trustedOrigins = [url.origin];
-  for (const allowedURL of [config.adminURL, config.portalURL].filter((value): value is string => Boolean(value))) {
+  for (const allowedURL of [config.adminURL].filter((value): value is string => Boolean(value))) {
     const admin = new URL(allowedURL);
     if (admin.pathname !== '/' || admin.search || admin.hash || admin.username || admin.password || (admin.protocol !== 'https:' && !(admin.protocol === 'http:' && ['localhost','127.0.0.1'].includes(admin.hostname)))) throw new Error('ADMIN_URL/PORTAL_URL must be a valid HTTPS origin (HTTP allowed locally)');
     trustedOrigins.push(admin.origin);

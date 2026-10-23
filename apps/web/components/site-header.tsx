@@ -24,7 +24,7 @@ export async function SiteHeader() {
           {links.map(([title, href]) => <a href={href} key={href}>{title}</a>)}
         </nav>
         <div className={styles.actions}>
-          {session ? <><a href="/ettevote/lisa" className={styles.join}>Minu ettevõte <ArrowRight size={16} aria-hidden="true" /></a><LogoutButton /></> : <>
+          {session ? <><a href="/portaal" className={styles.join}>Minu ettevõte <ArrowRight size={16} aria-hidden="true" /></a><LogoutButton /></> : <>
           <a href="/logi-sisse" className={styles.login} aria-label="Logi sisse">
             <LogIn size={17} aria-hidden="true" />
             <span>Logi sisse</span>
@@ -38,7 +38,7 @@ export async function SiteHeader() {
           <summary aria-label="Ava menüü"><Menu aria-hidden="true" /></summary>
           <nav aria-label="Mobiilinavigatsioon">
             {links.map(([title, href]) => <a href={href} key={href}>{title}</a>)}
-            {session ? <><a href="/ettevote/lisa">Minu ettevõte</a><LogoutButton /></> : <><a href="/logi-sisse">Logi sisse</a><a href="/liitu">Liitu LEEKiga</a></>}
+            {session ? <><a href="/portaal">Minu ettevõte</a><LogoutButton /></> : <><a href="/logi-sisse">Logi sisse</a><a href="/liitu">Liitu LEEKiga</a></>}
           </nav>
         </details>
       </div>

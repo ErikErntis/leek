@@ -5,7 +5,7 @@ import { RegionNotice } from '../region-notice';
 import { formatAnnualPrice, type PricingPlan } from '../../lib/pricing';
 import styles from './auth.module.css';
 
-export function AuthScreen({ mode, selectedPlan }: { mode: AuthMode; selectedPlan?: PricingPlan }) {
+export function AuthScreen({ mode, selectedPlan, nextPath }: { mode: AuthMode; selectedPlan?: PricingPlan; nextPath?: string }) {
   const register = mode === 'register';
 
   return (
@@ -45,7 +45,7 @@ export function AuthScreen({ mode, selectedPlan }: { mode: AuthMode; selectedPla
             </aside>
           )}
           {register && <RegionNotice compact />}
-          <AuthForm key={`${mode}:${selectedPlan?.id ?? 'none'}`} mode={mode} selectedPlanId={selectedPlan?.id} />
+          <AuthForm key={`${mode}:${selectedPlan?.id ?? 'none'}`} mode={mode} selectedPlanId={selectedPlan?.id} nextPath={nextPath} />
         </section>
       </div>
 
