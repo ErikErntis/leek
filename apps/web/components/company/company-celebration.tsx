@@ -28,7 +28,19 @@ function CelebrationMark() {
   </div>;
 }
 
-export function CompanyCelebration({ selectedPlan }: { selectedPlan?: PricingPlan }) {
+type CompanyCelebrationProps = {
+  selectedPlan?: PricingPlan;
+  companyName: string;
+  status: 'draft' | 'pending' | 'published' | 'rejected';
+  reviewNote?: string | null;
+};
+
+export function CompanyCelebration({
+  selectedPlan,
+  companyName,
+  status,
+  reviewNote,
+}: CompanyCelebrationProps) {
   const [celebration, setCelebration] = useState(0);
   return <div className={styles.page}>
     <div key={celebration} className={styles.confetti} aria-hidden="true">{confetti.map((style, index) => <i key={index} style={style} className={index % 3 === 0 ? styles.round : undefined} />)}</div>
@@ -45,7 +57,36 @@ export function CompanyCelebration({ selectedPlan }: { selectedPlan?: PricingPla
         </div>
         <CelebrationMark />
       </div>
-      <aside className={styles.preview}><span className={styles.previewLabel}>EELVAADE</span><p>See on liitumise lõppvaate eelvaade. Ettevõtte andmeid ei ole veel salvestatud ega kinnitamiseks saadetud.</p></aside>
+      <aside className={styles.preview}>
+  <span className={styles.previewLabel}>
+    {{
+      draft: 'MUSTAND',
+      pending: 'OOTAB KINNITAMIST',
+      published: 'KINNITATUD',
+      rejected: 'TAGASI LÜKATUD',
+    }[status]}
+  </span>
+
+  <div>
+    <p>
+      <strong>{companyName}</strong>
+      {status === 'draft' &&
+        ' on salvestatud mustandina. Ettevõtet pole veel kinnitamiseks esitatud.'}
+      {status === 'pending' &&
+        ' on esitatud kinnitamiseks. LEEKi haldur vaatab ettevõtte andmed üle.'}
+      {status === 'published' &&
+        ' on kinnitatud ja avalikus kataloogis nähtav.'}
+      {status === 'rejected' &&
+        ' taotlus on tagasi lükatud. Vaata halduri tagasisidet.'}
+    </p>
+
+    {reviewNote && (
+      <p>
+        <strong>Halduri tagasiside:</strong> {reviewNote}
+      </p>
+    )}
+  </div>
+</aside>
     </section>
     <section className={styles.next} aria-labelledby="next-title">
       <div className={styles.nextInner}>
