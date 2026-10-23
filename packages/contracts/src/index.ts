@@ -2,7 +2,7 @@ import { z } from 'zod';
 export const planSchema = z.enum(['free', 'visibility', 'employer']);
 export type Plan = z.infer<typeof planSchema>;
 export const companySchema = z.object({
-  id: z.string().uuid(), slug: z.string(), name: z.string(), registrationCode: z.string(),
+  id: z.string().uuid(), slug: z.string(), name: z.string(), brandName: z.string().optional(), registrationCode: z.string(),
   category: z.string(), municipality: z.string(), tagline: z.string(), description: z.string(),
   email: z.string().email(), phone: z.string(), website: z.union([z.literal(''), z.string().url()]), address: z.string(),
   image: z.string(), services: z.array(z.string()), plan: planSchema,
@@ -20,7 +20,7 @@ export const planNames: Record<Plan, string> = { free: 'Tasuta', visibility: 'N�
 export type PublicData = { companies: Company[]; jobs: Job[]; offers: Offer[]; source: 'demo' | 'database' };
 export function filterCompanies(companies: Company[], query: z.infer<typeof directoryQuerySchema>) {
   const q = query.q.toLocaleLowerCase('et');
-  return companies.filter(c => c.status === 'published' && (!query.category || c.category === query.category) && (!query.municipality || c.municipality === query.municipality) && (!q || [c.name, c.tagline, c.description, ...c.services].join(' ').toLocaleLowerCase('et').includes(q)));
+  return companies.filter(c => c.status === 'published' && (!query.category || c.category === query.category) && (!query.municipality || c.municipality === query.municipality) && (!q || [c.name, c.brandName, c.tagline, c.description, ...c.services].join(' ').toLocaleLowerCase('et').includes(q)));
 }
 
 export const publicDataSchema = z.object({companies:z.array(companySchema),jobs:z.array(jobSchema),offers:z.array(offerSchema),source:z.enum(['demo','database'])});
@@ -57,3 +57,40 @@ export const companySummarySchema = companySchema.pick({id:true,slug:true,name:t
 export type CompanySummary = z.infer<typeof companySummarySchema>;
 export const companyListSchema = z.object({items:z.array(companySummarySchema),hasMore:z.boolean()});
 export const reviewDecisionSchema = z.object({decision:z.enum(['approve','reject']),note:z.string().trim().max(1000).default('')}).strict().refine(value=>value.decision!=='reject'||value.note.length>=5,{path:['note'],message:'Lisa tagasilükkamise põhjus (vähemalt 5 märki).'});
+
+
+export const publicProfileInputSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+  brandName: z.string().trim().max(120),
+  category: z.enum(categories),
+  additionalCategories: z.array(z.enum(categories)).max(4),
+  municipality: z.string().trim().min(2).max(100),
+  settlement: z.string().trim().min(2).max(100),
+  address: z.string().trim().max(200),
+  email: z.string().trim().email().max(254), phone: phoneInput, website: websiteInput,
+  employees: z.enum(employeeBands),
+  tagline: z.string().trim().min(10).max(160),
+  description: z.string().trim().min(30).max(3000),
+}).strict().refine(value => !value.additionalCategories.includes(value.category) && new Set(value.additionalCategories).size === value.additionalCategories.length, {path: ['additionalCategories'], message: 'Kontrolli lisakategooriaid.'});
+export type PublicProfileInput = z.infer<typeof publicProfileInputSchema>;
+export const profileContactInputSchema = z.object({
+  name: z.string().trim().min(2).max(100), role: z.string().trim().max(100),
+  email: z.string().trim().email().max(254), phone: phoneInput,
+}).strict();
+export const profileSaveSchema = z.object({
+  version: z.number().int().min(0),
+  publicProfile: publicProfileInputSchema,
+  contact: profileContactInputSchema,
+}).strict();
+export type ProfileSave = z.infer<typeof profileSaveSchema>;
+export const profileRevisionSchema = z.object({
+  id: z.string().uuid(), status: z.enum(['pending','approved','rejected','superseded']),
+  content: publicProfileInputSchema, note: z.string(), createdAt: z.string(),
+});
+export const ownProfileSchema = z.object({
+  company: privateCompanySchema, revision: profileRevisionSchema.nullable(), version: z.number().int(),
+});
+export type OwnProfile = z.infer<typeof ownProfileSchema>;
+export function companyDisplayName(company: { name: string; brandName?: string }) {
+  return company.brandName?.trim() || company.name;
+}

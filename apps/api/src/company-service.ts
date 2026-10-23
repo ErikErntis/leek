@@ -1,4 +1,4 @@
-import { and, eq, gte, desc, count } from 'drizzle-orm';
+import { and, eq, gte, desc, count, sql } from 'drizzle-orm';
 import { companies, companyContacts, memberships, users, type createDatabase } from '@leek/db';
 import { privateCompanySchema, type CompanySubmission } from '@leek/contracts';
 
@@ -68,7 +68,7 @@ export function createCompanyService(db: Database) {
       return { items: rows.slice(0, 40).map(row => ({ ...row, createdAt: row.createdAt.toISOString() })), hasMore: rows.length > 40 };
     },
     async review(adminId: string, id: string, decision: 'approve' | 'reject', note: string) {
-      const [updated] = await db.update(companies).set({ status: decision === 'approve' ? 'published' : 'rejected', reviewNote: note, reviewedBy: adminId, reviewedAt: new Date(), updatedAt: new Date() })
+      const [updated] = await db.update(companies).set({ profileVersion: sql`${companies.profileVersion} + 1`, status: decision === 'approve' ? 'published' : 'rejected', reviewNote: note, reviewedBy: adminId, reviewedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(companies.id, id), eq(companies.status, 'pending'))).returning({ id: companies.id });
       if (!updated) throw new CompanyError(409, 'Ettevõte on juba üle vaadatud või seda ei leitud. Värskenda lehte.');
       return detail(id);

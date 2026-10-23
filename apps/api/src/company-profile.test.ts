@@ -1,0 +1,61 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+import {drizzle} from 'drizzle-orm/pglite';
+import * as schema from '@leek/db/schema';
+import {createAuth} from '@leek/auth/server';
+import {createApp} from './app';
+import {createCompanyService} from './company-service';
+import {createProfileService} from './company-profile';
+import {billingMigration} from '../../../packages/db/src/migrate-billing';
+import {filterCompanies,companyDisplayName,type PublicData} from '@leek/contracts';
+
+test('profile edits preserve live data, private contacts, ownership, versioning and reviewed brand names',async()=>{
+ const client=new PGlite();
+ try{
+  for(const name of ['0000_stormy_paibok.sql','0001_flaky_nebula.sql','0002_moaning_zarda.sql'])await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`,import.meta.url),'utf8'));
+  await client.exec(billingMigration);await client.exec(billingMigration);
+  const db=drizzle(client,{schema}) as unknown as Parameters<typeof createAuth>[0];
+  const auth=createAuth(db,{publicURL:'https://web.test',adminURL:'https://admin.test',secret:'local-tests-only-secret-long-enough-for-better-auth'});
+  const companyService=createCompanyService(db);const profiles=createProfileService(db);
+  const app=createApp({check:async()=>{},readPublic:async():Promise<PublicData>=>({companies:await db.select().from(schema.companies),jobs:[],offers:[],source:'database'})},['https://web.test','https://admin.test'],auth,companyService,undefined,profiles);
+  const request=(path:string,body?:unknown,cookie?:string,origin='https://web.test')=>app.request('https://api.test'+path,{method:body===undefined?'GET':'POST',headers:{Origin:origin,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  async function signup(email:string){const response=await request('/api/auth/sign-up/email',{name:'Test Kasutaja',email,password:'Test-password-42'});assert.equal(response.status,200);return response.headers.getSetCookie().find(x=>x.startsWith('__Secure-leek.session_token='))!.split(';')[0]!;}
+  const owner=await signup('owner@profile.test');const other=await signup('other@profile.test');const admin=await signup('admin@profile.test');
+  await client.exec("UPDATE users SET role='admin' WHERE email='admin@profile.test'");
+  const [ownerUser]=(await client.query<{id:string}>("SELECT id FROM users WHERE email='owner@profile.test'")).rows;
+  const publicProfile={name:'Vello Puit OÜ',brandName:'',category:'Tootmine' as const,additionalCategories:['Jaemüük' as const],municipality:'Lääne-Harju vald',settlement:'Paldiski',address:'Ranna tee 12',email:'tere@vello.test',phone:'+372 55555555',website:'https://vello.test',employees:'2–9' as const,tagline:'Kohalik puitmööbel igasse kodusse.',description:'Valmistame puidust mööblit kohalikele kodudele ja ettevõtetele juba aastaid.'};
+  const [company]=await db.insert(schema.companies).values({...publicProfile,slug:'vello-puit',registrationCode:'12345678',status:'published',currentSubscription:1}).returning();
+  await db.insert(schema.memberships).values({userId:ownerUser!.id,companyId:company!.id,role:'owner'});
+  const contact={name:'Privaatne Kontakt',role:'Esindaja',email:'private@vello.test',phone:'+372 55551234'};
+  await db.insert(schema.companyContacts).values({companyId:company!.id,...contact});
+  const id=company!.id;const path=`/v1/my/companies/${id}/profile`;
+  assert.equal((await request(path)).status,401);assert.equal((await request(path,undefined,other)).status,404);
+  assert.equal((await request('/v1/admin/profile-revisions',undefined,owner)).status,403);
+  const initial=await (await request(path,undefined,owner)).json();assert.equal(initial.version,0);assert.equal(initial.revision,null);
+  const save={version:0,publicProfile:{...publicProfile,brandName:'vello.ee'},contact:{...contact,phone:'+372 55550000'}};
+  assert.equal((await request(path,save,owner,'https://evil.test')).status,403);
+  assert.equal((await request(path,{...save,publicProfile:{...save.publicProfile,registrationCode:'99999999'}},owner)).status,400);
+  assert.equal((await request(path,{...save,publicProfile:{...save.publicProfile,website:'javascript:alert(1)'}},owner)).status,400);
+  const saved=await request(path,save,owner);assert.equal(saved.status,200,await saved.clone().text());const pending=await saved.json();assert.equal(pending.version,1);assert.equal(pending.company.brandName,'');assert.equal(pending.revision.content.brandName,'vello.ee');assert.equal(pending.company.contact.phone,'+372 55550000');
+  const live=await (await request('/v1/public')).json();assert.equal(live.companies[0].brandName,'');assert.doesNotMatch(JSON.stringify(live),/Privaatne Kontakt|private@vello|revision|profileVersion|preferredSubscription/);
+  assert.equal((await request(path,save,owner)).status,409);
+  const queue=await (await request('/v1/admin/profile-revisions',undefined,admin,'https://admin.test')).json();assert.equal(queue.items.length,1);
+  const revisionId=pending.revision.id;
+  const changed=await (await request(path,{...save,version:1,publicProfile:{...save.publicProfile,tagline:'Veel parem kohalik puitmööbel igasse kodusse.'}},owner)).json();
+  assert.notEqual(changed.revision.id,revisionId);
+  assert.equal((await request(`/v1/admin/profile-revisions/${revisionId}/review`,{decision:'approve'},admin,'https://admin.test')).status,409);
+  assert.equal((await request(`/v1/admin/profile-revisions/${changed.revision.id}/review`,{decision:'reject',note:''},admin,'https://admin.test')).status,400);
+  assert.equal((await request(`/v1/admin/profile-revisions/${changed.revision.id}/review`,{decision:'reject',note:'Palun täpsusta kirjeldust.'},admin,'https://admin.test')).status,200);
+  const rejected=await (await request(path,undefined,owner)).json();assert.equal(rejected.revision.status,'rejected');assert.equal(rejected.company.brandName,'');
+  const resubmitted=await (await request(path,{...save,version:rejected.version},owner)).json();assert.equal(resubmitted.revision.status,'pending');
+  const decisions=await Promise.all([request(`/v1/admin/profile-revisions/${resubmitted.revision.id}/review`,{decision:'approve'},admin,'https://admin.test'),request(`/v1/admin/profile-revisions/${resubmitted.revision.id}/review`,{decision:'approve'},admin,'https://admin.test')]);assert.deepEqual(decisions.map(x=>x.status).sort(),[200,409]);
+  const published=await (await request('/v1/public')).json();const branded=published.companies[0];assert.equal(branded.name,'Vello Puit OÜ');assert.equal(branded.brandName,'vello.ee');assert.equal(branded.slug,'vello-puit');assert.equal(branded.registrationCode,'12345678');
+  assert.equal(companyDisplayName(branded),'vello.ee');assert.equal(companyDisplayName({...branded,brandName:''}),'Vello Puit OÜ');
+  for(const q of ['vello.ee','Vello Puit'])assert.equal(filterCompanies(published.companies,{q,category:'',municipality:''}).length,1);
+  const approved=await (await request(path,undefined,owner)).json();
+  const contactOnly=await (await request(path,{version:approved.version,publicProfile:{...publicProfile,brandName:'vello.ee'},contact:{...contact,email:'new-private@vello.test'}},owner)).json();assert.equal(contactOnly.company.contact.email,'new-private@vello.test');assert.equal((await profiles.queue()).items.length,0);
+  assert.doesNotMatch(JSON.stringify(await (await request('/v1/public')).json()),/new-private/);
+ }finally{await client.close();}
+});

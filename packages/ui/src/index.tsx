@@ -12,7 +12,7 @@ import {
   Layers,
   ShieldCheck,
 } from 'lucide-react';
-import type { Company } from '@leek/contracts';
+import { companyDisplayName, type Company } from '@leek/contracts';
 
 export function Brand({ href = '/' }: { href?: string }) {
   return (
@@ -49,7 +49,7 @@ export function Brand({ href = '/' }: { href?: string }) {
         />
       </svg>
 
-      LEEK
+      <strong>LEEK</strong>
 
       <span>
         Loode-Eesti 
@@ -150,7 +150,7 @@ export function CompanyCard({ company }: { company: Company }) {
         className="card-photo"
         style={{ backgroundImage: `url("${company.image}")` }}
         role="img"
-        aria-label={company.name}
+        aria-label={companyDisplayName(company)}
       >
         {company.featured && (
           <span className="badge featured">ESILE TÕSTETUD</span>
@@ -163,7 +163,7 @@ export function CompanyCard({ company }: { company: Company }) {
 
       <div className="card-copy">
         <div className="card-category">{company.category}</div>
-        <h3>{company.name}</h3>
+        <h3>{companyDisplayName(company)}</h3>
 
         <span className="location">
           <MapPin size={13} />
@@ -218,6 +218,7 @@ const adminNav = [
   ['Ülevaade', '/', LayoutDashboard],
   ['Ettevõtted', '/ettevotted', Building2],
   ['Sisu ülevaatus', '/ulevaatus', ShieldCheck],
+  ['Profiilimuudatused', '/profiilimuudatused', FileText],
   ['Paketid', '/paketid', Layers],
 ] as const;
 

@@ -1,3 +1,5 @@
+import type { createProfileService } from './company-profile';
+import { profileSaveSchema } from '@leek/contracts';
 import { logError } from './log-error';
 import type { createBilling } from './billing';
 import { planSchema } from '@leek/contracts';
@@ -7,7 +9,7 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
     routes.use(path, bodyLimit({ maxSize: 32768 }));
@@ -60,6 +62,36 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
   routes.get('/v1/my/companies/:id', async c => {
     if (!validId(c.req.param('id'))) return c.json({ error: 'Ettevõtet ei leitud.' }, 404);
     return c.json(await service!.ownDetail(c.get('userId'), c.req.param('id')));
+  });
+  routes.get('/v1/my/companies/:id/profile', async c => {
+    if (!profiles) return c.json({error:'Profiil pole seadistatud.'},503);
+    if (!validId(c.req.param('id'))) return c.json({error:'Ettevõtet ei leitud.'},404);
+    return c.json(await profiles.own(c.get('userId'),c.req.param('id')));
+  });
+  routes.post('/v1/my/companies/:id/profile', async c => {
+    if (!profiles) return c.json({error:'Profiil pole seadistatud.'},503);
+    if (!validId(c.req.param('id'))) return c.json({error:'Ettevõtet ei leitud.'},404);
+    let body: unknown; try {body=await c.req.json();} catch {return c.json({error:'Vigane JSON-päring.'},400);}
+    const input=profileSaveSchema.safeParse(body);
+    if (!input.success) return c.json({error:'Kontrolli profiili andmeid.',fields:input.error.flatten().fieldErrors},400);
+    return c.json(await profiles.save(c.get('userId'),c.req.param('id'),input.data));
+  });
+  routes.get('/v1/admin/profile-revisions',async c=>{
+    if (!profiles) return c.json({error:'Profiil pole seadistatud.'},503);
+    return c.json(await profiles.queue());
+  });
+  routes.get('/v1/admin/profile-revisions/:id',async c=>{
+    if (!profiles) return c.json({error:'Profiil pole seadistatud.'},503);
+    if (!validId(c.req.param('id'))) return c.json({error:'Muudatust ei leitud.'},404);
+    return c.json(await profiles.reviewDetail(c.req.param('id')));
+  });
+  routes.post('/v1/admin/profile-revisions/:id/review',async c=>{
+    if (!profiles) return c.json({error:'Profiil pole seadistatud.'},503);
+    if (!validId(c.req.param('id'))) return c.json({error:'Muudatust ei leitud.'},404);
+    let body:unknown;try{body=await c.req.json();}catch{return c.json({error:'Vigane JSON-päring.'},400);}
+    const input=reviewDecisionSchema.safeParse(body);
+    if (!input.success) return c.json({error:'Lisa otsus ja tagasilükkamise põhjus.'},400);
+    return c.json(await profiles.review(c.get('userId'),c.req.param('id'),input.data.decision,input.data.note));
   });
   routes.get('/v1/admin/access', c => c.json({ role: 'admin' }));
   routes.get('/v1/admin/companies', async c => {
