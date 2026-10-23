@@ -1,4 +1,3 @@
-import { requireDemoAccess } from '../../lib/preview-access';
-import { WorkspaceShell } from '@leek/ui';
-import { ContentTable } from '../../components/content';
-export default function Page(){requireDemoAccess();return <WorkspaceShell kind="portal" active="/pakkumised" siteUrl={process.env.SITE_URL}><div className="workspace-heading"><div><h1>Pakkumised</h1><p>Sinu ettevõtte avaldatud sisu.</p></div></div><p className="notice-panel">See on sisu halduse eelvaade. Lisamine ja muutmine avaneb pärast turvalise sisselogimise ühendamist.</p><section className="panel"><ContentTable kind="offers"/></section></WorkspaceShell>;}
+import {portalData} from '../../lib/portal';
+import {PortalShell} from '../../components/portal-shell';
+export default async function Page(){const data=await portalData();const company=data.companies[0];return <PortalShell company={company} active="/pakkumised"><section className="panel"><h1>Teenused ja pakkumised</h1><p>See osa avaneb järgmises etapis.</p><a className="text-link" href="/">Tagasi ülevaatesse →</a></section></PortalShell>;}

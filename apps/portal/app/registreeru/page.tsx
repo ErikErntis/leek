@@ -1,7 +1,2 @@
-import type { Metadata } from 'next';
-import { AuthScreen } from '../../components/auth/auth-screen';
-
-export const metadata: Metadata = { title: 'Loo konto' };
-export default function RegisterPage() {
-  return <AuthScreen mode="register" />;
-}
+import {redirect} from 'next/navigation';
+export default function Page(){redirect('/auth/start');}
