@@ -49,7 +49,7 @@ export function Brand({ href = '/' }: { href?: string }) {
         />
       </svg>
 
-      <strong>LEEK</strong>
+      LEEK
 
       <span>
         Loode-Eesti 
@@ -228,6 +228,8 @@ type WorkspaceShellProps = {
   siteUrl?: string;
   demo?: boolean;
   actions?: ReactNode;
+  companyName?: string;
+  companySlug?: string;
 };
 
 export function WorkspaceShell({
@@ -237,6 +239,8 @@ export function WorkspaceShell({
   siteUrl = 'http://localhost:3000',
   demo = true,
   actions,
+  companyName,
+  companySlug,
 }: WorkspaceShellProps) {
   const admin = kind === 'admin';
   const navigation = admin ? adminNav : portalNav;
@@ -254,13 +258,13 @@ export function WorkspaceShell({
           <Building2 size={19} />
 
           <div>
-            <strong>{admin ? 'LEEK' : 'Ranniku Puit'}</strong>
+            <strong>{admin ? 'LEEK' : companyName ?? 'Minu ettevõte'}</strong>
             <small>
               {admin
                 ? demo
                   ? 'Administraatori demovaade'
                   : 'LEEKi haldur'
-                : 'Ettevõtte demovaade'}
+                : demo ? 'Ettevõtte demovaade' : 'Ettevõtja iseteenindus'}
             </small>
           </div>
         </div>
@@ -289,7 +293,7 @@ export function WorkspaceShell({
           <span>{admin ? 'Halduskeskond' : 'Minu ettevõte'}</span>
 
           <a
-            href={`${siteUrl}${admin ? '' : '/ettevotted/ranniku-puit'}`}
+            href={`${siteUrl}${admin ? '' : companySlug ? `/ettevotted/${companySlug}` : '/ettevotted'}`}
             className="text-link"
           >
             Vaata avalikku {admin ? 'veebi' : 'profiili'}
