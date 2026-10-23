@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray, lte } from 'drizzle-orm';
 import { companies, memberships, billingCheckouts, type createDatabase } from '@leek/db';
 import type { Plan } from '@leek/contracts';
 import { CompanyError } from './company-service';
@@ -9,6 +9,8 @@ export const plans = [
   { id: 'visibility', name: 'Edendaja', amount: 5000, features: ['Piiramatult teenuseid', 'Statistika'] },
   { id: 'employer', name: 'Eestvedaja', amount: 15000, features: ['Piiramatult teenuseid', 'Statistika', 'Töö- ja üritusekuulutused', 'Esiletõstmine'] },
 ] as const;
+export const subscriptionId = (plan: Plan): 1 | 2 | 3 => plan === 'visibility' ? 2 : plan === 'employer' ? 3 : 1;
+export const subscriptionPlan = (id: number | null): Plan => id === 2 ? 'visibility' : id === 3 ? 'employer' : 'free';
 const fail = (message: string): never => { throw new CompanyError(409, message); };
 export function verifyStripeSignature(raw: string, signature: string, secret: string, now = Date.now()) {
   const fields = signature.split(',').map(x => x.split('='));
@@ -49,7 +51,12 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
     async overview(userId: string) {
       const rows = await db.select({ company: companies }).from(memberships).innerJoin(companies, eq(memberships.companyId, companies.id)).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).orderBy(desc(companies.createdAt));
       const now = new Date();
-      return { companies: rows.map(({ company }) => ({ id: company.id, name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, plan: company.paidUntil && company.paidUntil > now ? company.plan : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.BETTER_AUTH_URL) };
+      const expired = rows.filter(({ company }) => company.currentSubscription !== null && company.currentSubscription > 1 && company.paidUntil !== null && company.paidUntil <= now);
+      if (expired.length) {
+        await db.update(companies).set({ currentSubscription: 1, plan: 'free', featured: false, updatedAt: now }).where(and(inArray(companies.id, expired.map(({ company }) => company.id)), inArray(companies.currentSubscription, [2, 3]), lte(companies.paidUntil, now)));
+        for (const { company } of expired) company.currentSubscription = 1;
+      }
+      return { companies: rows.map(({ company }) => ({ id: company.id, name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, preferredSubscription: company.preferredSubscription, currentSubscription: company.currentSubscription, plan: company.currentSubscription !== null && company.paidUntil && company.paidUntil > now ? subscriptionPlan(company.currentSubscription) : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.BETTER_AUTH_URL) };
     },
     async choose(userId: string, id: string, plan: Plan) {
       return db.transaction(async raw => {
@@ -57,18 +64,20 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
         const company = await owner(tx, userId, id);
         if (company.status !== 'published') fail('Paketti saab muuta pärast ettevõtte kinnitamist.');
         if (company.paidUntil && company.paidUntil > new Date()) fail('Aktiivse tasulise paketi muutmiseks võta ühendust halduriga.');
+        if (plan !== 'free' && company.requestedPlan === plan) return { ok: true };
         await closePending(tx, id);
-        await tx.update(companies).set({ requestedPlan: plan, plan: 'free', featured: false, paidUntil: null, updatedAt: new Date() }).where(eq(companies.id, id));
+        await tx.update(companies).set({ requestedPlan: plan, ...(plan === 'free' ? { currentSubscription: 1 } : {}), plan: 'free', featured: false, paidUntil: null, updatedAt: new Date() }).where(eq(companies.id, id));
         return { ok: true };
       });
     },
-    async checkout(userId: string, id: string) {
+    async checkout(userId: string, id: string, expectedPlan?: Plan) {
       if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.BETTER_AUTH_URL) fail('Maksmine pole veel seadistatud. Saad jätkata tasuta paketiga.');
       return db.transaction(async raw => {
         const tx = raw as unknown as Database;
         const company = await owner(tx, userId, id);
         if (company.status !== 'published') fail('Maksta saab pärast ettevõtte kinnitamist.');
         if (company.paidUntil && company.paidUntil > new Date()) fail('Tasuline pakett on juba aktiivne.');
+        if (expectedPlan && company.requestedPlan !== expectedPlan) fail('Paketivalik on vahepeal muutunud. Vali pakett uuesti.');
         const plan = plans.find(p => p.id === company.requestedPlan)!;
         if (plan.id === 'free') fail('Tasuta paketi eest ei ole vaja maksta.');
         const [existing] = await tx.select().from(billingCheckouts).where(and(eq(billingCheckouts.companyId, id), eq(billingCheckouts.status, 'pending')));
@@ -106,7 +115,7 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
         if (!company || company.status !== 'published') throw new Error('Paid company requires manual review');
         const now = new Date(); const until = new Date(Math.max(now.getTime(), company.paidUntil?.getTime() ?? 0)); until.setUTCFullYear(until.getUTCFullYear() + 1);
         await tx.update(billingCheckouts).set({ status: 'paid', paidAt: now }).where(eq(billingCheckouts.id, record.id));
-        await tx.update(companies).set({ plan: record.plan, requestedPlan: record.plan, paidUntil: until, featured: record.plan === 'employer', updatedAt: now }).where(eq(companies.id, company.id));
+        await tx.update(companies).set({ currentSubscription: subscriptionId(record.plan), plan: record.plan, requestedPlan: record.plan, paidUntil: until, featured: record.plan === 'employer', updatedAt: now }).where(eq(companies.id, company.id));
       });
     },
   };

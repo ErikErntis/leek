@@ -1,3 +1,4 @@
+import { billingMigration } from '../../../packages/db/src/migrate-billing';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -13,6 +14,7 @@ test('company submission and admin review enforce ownership, privacy, status, qu
   const client = new PGlite();
   try {
     for (const name of ['0000_stormy_paibok.sql','0001_flaky_nebula.sql','0002_moaning_zarda.sql']) await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`, import.meta.url),'utf8'));
+    await client.exec(billingMigration);
     const db = drizzle(client, { schema }) as unknown as Parameters<typeof createAuth>[0];
     const auth = createAuth(db, { publicURL:'https://leek.test', adminURL:'https://admin.leek.test', secret:'local-tests-only-long-random-secret-not-for-deployment' });
     const repository = { check:async()=>{}, readPublic:async():Promise<PublicData>=>({ companies:await db.select().from(schema.companies), jobs:[], offers:[], source:'database' }) };
@@ -41,6 +43,7 @@ test('company submission and admin review enforce ownership, privacy, status, qu
     assert.equal((await client.query('SELECT * FROM company_contacts')).rows.length,1);
     assert.equal((await client.query('SELECT * FROM company_memberships')).rows.length,1);
     const own = await (await request(`/v1/my/companies/${id}`,undefined,owner)).json();
+    const storedSubscription = await client.query<{preferred_subscription:number;current_subscription:number|null}>('SELECT preferred_subscription,current_subscription FROM companies WHERE id=$1',[id]); assert.equal(storedSubscription.rows[0]!.preferred_subscription,3);assert.equal(storedSubscription.rows[0]!.current_subscription,null);
     assert.equal(own.status,'pending');assert.equal(own.plan,'free');assert.equal(own.featured,false);assert.equal(own.requestedPlan,'employer');assert.equal(own.contact.email,'private@example.ee');
     assert.equal((await request(`/v1/my/companies/${id}`,undefined,outsider)).status,404);
     const retry = await request('/v1/my/companies',input,owner);assert.equal(retry.status,200);assert.equal((await retry.json()).id,id);

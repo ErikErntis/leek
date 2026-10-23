@@ -44,7 +44,10 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
   routes.post('/v1/my/companies/:id/checkout', async c => {
     if (!billing) return c.json({ error: 'Maksmine pole seadistatud.' }, 503);
     if (!validId(c.req.param('id'))) return c.json({ error: 'Ettevõtet ei leitud.' }, 404);
-    return c.json(await billing.checkout(c.get('userId'), c.req.param('id')));
+    let body: unknown; try { body = await c.req.json(); } catch { return c.json({ error: 'Vigane päring.' }, 400); }
+    const selected = (body as { plan?: unknown } | null)?.plan;
+    if (selected !== undefined && !planSchema.safeParse(selected).success) return c.json({ error: 'Vali sobiv pakett.' }, 400);
+    return c.json(await billing.checkout(c.get('userId'), c.req.param('id'), selected as import('@leek/contracts').Plan | undefined));
   });
   routes.post('/v1/my/companies', async c => {
     let body: unknown;

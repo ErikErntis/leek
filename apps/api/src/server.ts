@@ -21,7 +21,7 @@ const repository: Repository = {
   else {
    const db=database!.db;
    const [allCompanies,allJobs,allOffers]=await Promise.all([db.select().from(companies),db.select().from(jobs),db.select().from(offers)]);
-   data={companies:allCompanies.map(company => ({...company, plan: company.paidUntil && company.paidUntil > new Date() ? company.plan : 'free' as const, featured: company.featured && Boolean(company.paidUntil && company.paidUntil > new Date())})),jobs:allJobs.map(j=>({...j,expiresAt:j.expiresAt.toISOString()})),offers:allOffers.map(o=>({...o,expiresAt:o.expiresAt.toISOString()})),source:'database'};
+   data={companies:allCompanies.map(company => ({...company, plan: company.currentSubscription !== null && company.paidUntil && company.paidUntil > new Date() ? (company.currentSubscription === 3 ? 'employer' as const : company.currentSubscription === 2 ? 'visibility' as const : 'free' as const) : 'free' as const, featured: company.currentSubscription === 3 && company.featured && Boolean(company.paidUntil && company.paidUntil > new Date())})),jobs:allJobs.map(j=>({...j,expiresAt:j.expiresAt.toISOString()})),offers:allOffers.map(o=>({...o,expiresAt:o.expiresAt.toISOString()})),source:'database'};
   }
   return data;
  }

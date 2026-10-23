@@ -39,7 +39,9 @@ export function createCompanyService(db: Database) {
             municipality: input.municipality, settlement: input.settlement, address: input.address,
             email: input.email, phone: input.phone, website: input.website,
             employees: input.employees, tagline: input.tagline, description: input.description,
-            requestedPlan: input.requestedPlan, submittedBy: userId,
+            requestedPlan: input.requestedPlan,
+            preferredSubscription: input.requestedPlan === 'visibility' ? 2 : input.requestedPlan === 'employer' ? 3 : 1,
+            currentSubscription: null, submittedBy: userId,
             // Approval and payment are separate: no paid privileges from a form value.
             status: 'pending', plan: 'free', featured: false, services: [],
           }).returning({ id: companies.id });

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { getSession } from './session';
 import type { Plan } from '@leek/contracts';
-export type PortalCompany={id:string;name:string;slug:string;status:'draft'|'pending'|'published'|'rejected';reviewNote:string;requestedPlan:Plan;plan:Plan;paidUntil:string|null};
+export type PortalCompany={id:string;name:string;slug:string;status:'draft'|'pending'|'published'|'rejected';reviewNote:string;requestedPlan:Plan;preferredSubscription:1|2|3;currentSubscription:1|2|3|null;plan:Plan;paidUntil:string|null};
 export type PortalData={companies:PortalCompany[];plans:{id:Plan;name:string;amount:number;features:string[]}[];checkoutAvailable:boolean};
 export function apiURL(path:string){
  const url=new URL(process.env.API_URL??'http://localhost:3003');

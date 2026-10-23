@@ -8,6 +8,17 @@ CREATE TABLE IF NOT EXISTS billing_checkouts (
  stripe_session_id text UNIQUE, paid_at timestamptz, created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS billing_checkouts_company_idx ON billing_checkouts(company_id);
+DO $$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='companies' AND column_name='preferred_subscription') THEN
+  ALTER TABLE companies ADD COLUMN preferred_subscription integer NOT NULL DEFAULT 1 CHECK (preferred_subscription IN (1,2,3));
+  UPDATE companies SET preferred_subscription=CASE requested_plan WHEN 'visibility' THEN 2 WHEN 'employer' THEN 3 ELSE 1 END;
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='companies' AND column_name='current_subscription') THEN
+  ALTER TABLE companies ADD COLUMN current_subscription integer CHECK (current_subscription IN (1,2,3));
+  UPDATE companies SET current_subscription=CASE plan WHEN 'visibility' THEN 2 WHEN 'employer' THEN 3 END WHERE plan <> 'free' AND paid_until IS NOT NULL;
+ END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {
