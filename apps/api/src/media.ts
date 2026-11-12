@@ -19,9 +19,25 @@ export async function prepareImage(bytes:Buffer,kind:'image'|'logo') {
 }
 export function createMediaRoutes(db:Database,auth:AuthHandler,origins:string[]) {
  const app=new Hono();
- const configured=Boolean(process.env.BUCKET_ENDPOINT&&process.env.BUCKET_NAME&&process.env.BUCKET_ACCESS_KEY_ID&&process.env.BUCKET_SECRET_ACCESS_KEY);
- const bucket=process.env.BUCKET_NAME??'';
- const s3=configured?new S3Client({endpoint:process.env.BUCKET_ENDPOINT,region:process.env.BUCKET_REGION??'auto',forcePathStyle:process.env.BUCKET_FORCE_PATH_STYLE==='true',credentials:{accessKeyId:process.env.BUCKET_ACCESS_KEY_ID!,secretAccessKey:process.env.BUCKET_SECRET_ACCESS_KEY!},requestChecksumCalculation:'WHEN_REQUIRED',responseChecksumValidation:'WHEN_REQUIRED',maxAttempts:2}):null;
+ const {
+  AWS_ENDPOINT_URL: endpoint,
+  AWS_S3_BUCKET_NAME: bucket = '',
+  AWS_ACCESS_KEY_ID: accessKeyId,
+  AWS_SECRET_ACCESS_KEY: secretAccessKey,
+  AWS_DEFAULT_REGION: region = 'auto',
+  BUCKET_FORCE_PATH_STYLE: forcePathStyle,
+ } = process.env;
+ const s3 = endpoint && bucket && accessKeyId && secretAccessKey
+  ? new S3Client({
+   endpoint,
+   region,
+   forcePathStyle: forcePathStyle === 'true',
+   credentials: { accessKeyId, secretAccessKey },
+   requestChecksumCalculation: 'WHEN_REQUIRED',
+   responseChecksumValidation: 'WHEN_REQUIRED',
+   maxAttempts: 2,
+  })
+  : null;
  app.post('/v1/uploads/:companyId/:kind',bodyLimit({maxSize:5*1024*1024}),async c=>{
   if(!origins.includes(c.req.header('origin')??''))return c.json({error:'Päringu päritolu pole lubatud.'},403);
   const session=await auth.api.getSession({headers:c.req.raw.headers,query:{disableRefresh:true}});

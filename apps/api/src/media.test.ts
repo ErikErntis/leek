@@ -16,7 +16,14 @@ test('media validates, re-encodes, signs private storage and requires approval b
  const client=new PGlite();const objects:Buffer[]=[];
  const server=createServer(async(req,res)=>{const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(chunk);objects.push(Buffer.concat(chunks));res.writeHead(200,{'ETag':'"test"'}).end();});
  server.listen(0,'127.0.0.1');await once(server,'listening');const address=server.address() as {port:number};
- Object.assign(process.env,{BUCKET_ENDPOINT:`http://127.0.0.1:${address.port}`,BUCKET_NAME:'local-test',BUCKET_ACCESS_KEY_ID:'test',BUCKET_SECRET_ACCESS_KEY:'test-secret',BUCKET_REGION:'auto',BUCKET_FORCE_PATH_STYLE:'true'});
+ Object.assign(process.env, {
+  AWS_ENDPOINT_URL: `http://127.0.0.1:${address.port}`,
+  AWS_S3_BUCKET_NAME: 'local-test',
+  AWS_ACCESS_KEY_ID: 'test',
+  AWS_SECRET_ACCESS_KEY: 'test-secret',
+  AWS_DEFAULT_REGION: 'auto',
+  BUCKET_FORCE_PATH_STYLE: 'true',
+ });
  try{
   for(const name of ['0000_stormy_paibok.sql','0001_flaky_nebula.sql','0002_moaning_zarda.sql'])await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`,import.meta.url),'utf8'));
   await client.exec(billingMigration);await client.exec(billingMigration);
