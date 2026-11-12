@@ -1,3 +1,5 @@
+import type { createServiceListings } from './service-listings';
+import { serviceSaveSchema } from '@leek/contracts';
 import type { createProfileService } from './company-profile';
 import { profileSaveSchema } from '@leek/contracts';
 import { logError } from './log-error';
@@ -9,7 +11,7 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
     routes.use(path, bodyLimit({ maxSize: 32768 }));
@@ -92,6 +94,31 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     const input=reviewDecisionSchema.safeParse(body);
     if (!input.success) return c.json({error:'Lisa otsus ja tagasilükkamise põhjus.'},400);
     return c.json(await profiles.review(c.get('userId'),c.req.param('id'),input.data.decision,input.data.note));
+  });
+  routes.get('/v1/my/companies/:id/services', async c => {
+    if (!listings) return c.json({ error: 'Teenused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.json({ error: 'Ettevõtet ei leitud.' }, 404);
+    return c.json({ items: await listings.own(c.get('userId'), c.req.param('id')) });
+  });
+  routes.post('/v1/my/companies/:id/services', async c => {
+    if (!listings) return c.json({ error: 'Teenused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.json({ error: 'Ettevõtet ei leitud.' }, 404);
+    const input = serviceSaveSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: 'Kontrolli teenuse andmeid.' }, 400);
+    return c.json(await listings.save(c.get('userId'), c.req.param('id'), input.data));
+  });
+  routes.get('/v1/admin/services', async c => {
+    if (!listings) return c.json({ error: 'Teenused pole seadistatud.' }, 503);
+    return c.json({ items: await listings.queue() });
+  });
+  routes.post('/v1/admin/services/:id/review', async c => {
+    if (!listings) return c.json({ error: 'Teenused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.json({ error: 'Teenust ei leitud.' }, 404);
+    const body = await c.req.json().catch(() => null);
+    const decision = reviewDecisionSchema.safeParse({ decision: body?.decision, note: body?.note });
+    const version = body?.version;
+    if (!decision.success || !Number.isSafeInteger(version) || version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
+    return c.json(await listings.review(c.req.param('id'), version, decision.data.decision, decision.data.note));
   });
   routes.get('/v1/admin/access', c => c.json({ role: 'admin' }));
   routes.get('/v1/admin/companies', async c => {

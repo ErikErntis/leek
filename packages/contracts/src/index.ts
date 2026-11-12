@@ -95,3 +95,40 @@ export type OwnProfile = z.infer<typeof ownProfileSchema>;
 export function companyDisplayName(company: { name: string; brandName?: string }) {
   return company.brandName?.trim() || company.name;
 }
+
+export const serviceCategories = ['Mööbel ja sisustus', 'Remont ja ehitus', 'Kodu ja aed', 'Muud teenused'] as const;
+export const serviceContentSchema = z.object({
+ title: z.string().trim().max(80),
+ category: z.enum(serviceCategories),
+ area: z.enum(municipalities),
+ description: z.string().trim().max(1000),
+ pricing: z.enum(['quote', 'fixed']),
+ priceCents: z.number().int().min(1).max(100_000_000).nullable(),
+ photo: z.union([z.literal(''), z.string().regex(/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)]),
+}).strict().refine(content => content.pricing === 'fixed' || content.priceCents === null);
+export type ServiceContent = z.infer<typeof serviceContentSchema>;
+
+export const serviceSaveSchema = z.object({
+ id: z.string().uuid(),
+ version: z.number().int().min(0).nullable(),
+ action: z.enum(['draft', 'submit', 'hide', 'show']),
+ content: serviceContentSchema.optional(),
+}).strict();
+export type ServiceSave = z.infer<typeof serviceSaveSchema>;
+export type CompanyService = {
+ id: string;
+ companyId: string;
+ version: number;
+ status: 'draft' | 'pending' | 'approved' | 'rejected';
+ content: ServiceContent;
+ published: ServiceContent | null;
+ visible: boolean;
+ note: string;
+};
+export type PublicService = ServiceContent & {
+ id: string;
+ company: { slug: string; name: string; brandName: string; email: string; logo: string };
+};
+export function formatServicePrice(cents: number) {
+ return new Intl.NumberFormat('et-EE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+}

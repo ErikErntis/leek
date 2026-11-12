@@ -1,0 +1,56 @@
+.service-page { padding-block: 30px 65px; }
+.service-page > h1 { margin: 0 0 18px; }
+.service-breadcrumb { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+.service-breadcrumb a { color: var(--petrol); }
+.service-detail-grid, .service-editor-grid {
+ display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(235px, 1fr); gap: 20px; align-items: start;
+}
+.service-detail > .eyebrow { margin: 0 0 7px; }
+.service-detail-title { margin: 0; line-height: 1.12; font-size: clamp(26px, 5vw, 46px); overflow-wrap: anywhere; }
+.service-provider { display: flex; gap: 10px; align-items: center; margin: 16px 0; }
+.service-provider-logo { width: 42px; height: 42px; flex: none; display: grid; place-items: center; background: var(--soft); color: var(--petrol); font-weight: 800; border-radius: 7px; overflow: hidden; }
+.service-provider-logo img { object-fit: contain; }
+.service-location { display: flex; align-items: center; gap: 5px; margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.service-photo { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; margin-bottom: 18px; }
+.service-description { padding-top: 16px; border-top: 1px solid var(--line); }
+.service-description h2 { font-size: 18px; margin: 0; }
+.service-description p { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.service-price-panel { border-top: 4px solid var(--accent); }
+.service-price-panel h2 { margin: 0 0 10px; font-size: 23px; }
+.service-price-panel p { margin: 0 0 8px; }
+.service-price-panel .button { margin-top: 9px; width: 100%; text-align: center; }
+.service-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 12px; list-style: none; padding: 0; }
+.service-cards h3 { margin: 6px 0; overflow-wrap: anywhere; }
+.service-cards p { margin: 0 0 6px; }
+.service-cards a:hover { color: var(--petrol); text-decoration: underline; }
+.service-search { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.service-search label { display: grid; gap: 5px; width: min(100%, 380px); }
+.service-search input, .service-fields input:not([type="radio"]), .service-fields select, .service-fields textarea {
+ width: 100%; min-width: 0; padding: 9px 10px; font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 5px;
+}
+.service-editor-main, .service-fields { display: grid; gap: 13px; min-width: 0; }
+.service-fields legend { margin-bottom: 9px; }
+.service-fields label { display: grid; gap: 5px; min-width: 0; font-size: 14px; font-weight: 600; }
+.service-fields small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.service-fields textarea { resize: vertical; }
+.service-fields-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.service-fields .service-price-option { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line); padding: 10px; border-radius: 7px; }
+.service-price-option:has(input:checked) { border-color: var(--petrol); background: var(--soft); }
+.service-price-option input { accent-color: var(--petrol); margin-top: 4px; }
+.service-price-option small { display: block; }
+.service-photo-controls, .service-editor-actions, .service-preview-heading, .service-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.service-photo-controls img { object-fit: cover; border-radius: 6px; }
+.service-editor-actions { margin-top: 16px; justify-content: flex-end; }
+.service-editor-status { color: var(--muted); overflow-wrap: anywhere; }
+.service-preview-heading { justify-content: space-between; margin-bottom: 14px; }
+.service-owner-list { list-style: none; padding: 0; margin: 0; }
+.service-owner-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding: 10px 0; overflow-wrap: anywhere; }
+.service-owner-list li + li { border-top: 1px solid var(--line); }
+.service-owner-list button, .service-photo-controls button.text-link { border: 0; padding: 0; background: transparent; font: inherit; text-align: left; }
+@media (max-width: 720px) {
+ .service-detail-grid, .service-editor-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 460px) {
+ .service-fields-pair { grid-template-columns: 1fr; }
+ .service-search input, .service-fields input:not([type="radio"]), .service-fields select, .service-fields textarea { font-size: 16px; }
+}

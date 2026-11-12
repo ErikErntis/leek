@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS company_profile_revisions (
 );
 CREATE INDEX IF NOT EXISTS company_profile_revisions_queue_idx ON company_profile_revisions(status,created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS company_profile_one_pending_idx ON company_profile_revisions(company_id) WHERE status='pending';
+CREATE TABLE IF NOT EXISTS service_listings (
+ id uuid PRIMARY KEY, company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ content jsonb NOT NULL, published jsonb, status text NOT NULL DEFAULT 'draft'
+ CHECK(status IN ('draft','pending','approved','rejected')),
+ version integer NOT NULL DEFAULT 0, visible boolean NOT NULL DEFAULT true,
+ note text NOT NULL DEFAULT '', updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS service_listings_company_idx ON service_listings(company_id);
+CREATE INDEX IF NOT EXISTS service_listings_status_idx ON service_listings(status,updated_at);
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {

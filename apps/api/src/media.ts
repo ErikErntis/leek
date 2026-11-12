@@ -4,8 +4,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { and, eq, desc } from 'drizzle-orm';
-import { companies, companyMedia, memberships, users, type createDatabase } from '@leek/db';
+import { and, eq, desc, sql } from 'drizzle-orm';
+import { companies, companyMedia, memberships, serviceListings, users, type createDatabase } from '@leek/db';
 import type { AuthHandler } from './app';
 
 type Database=ReturnType<typeof createDatabase>['db'];
@@ -67,7 +67,13 @@ export function createMediaRoutes(db:Database,auth:AuthHandler,origins:string[])
   const [company]=await db.select().from(companies).where(eq(companies.id,asset.companyId));
   const url=`/api/media/${id}`;
   const published=company?.status==='published'&&(company.image===url||company.logo===url);
-  if(!published){
+  const publicServicePhoto = !published && company?.status === 'published' && asset.kind === 'image'
+   ? (await db.select({ id: serviceListings.id }).from(serviceListings).where(and(
+    eq(serviceListings.companyId, asset.companyId), eq(serviceListings.visible, true),
+    sql`${serviceListings.published}->>'photo' = ${url}`,
+   )).limit(1)).length > 0
+   : false;
+  if(!published && !publicServicePhoto){
    const session=await auth.api.getSession({headers:c.req.raw.headers,query:{disableRefresh:true}});if(!session)return c.notFound();
    const [member]=await db.select().from(memberships).where(and(eq(memberships.companyId,asset.companyId),eq(memberships.userId,session.user.id)));
    const [user]=await db.select().from(users).where(eq(users.id,session.user.id));

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { PublicProfileInput } from '@leek/contracts';
+import type { PublicProfileInput, ServiceContent } from '@leek/contracts';
 import { pgTable, uuid, text, timestamp, boolean, uniqueIndex, index, primaryKey, pgEnum, integer, bigint, jsonb } from 'drizzle-orm/pg-core';
 export const publicationStatus = pgEnum('publication_status', ['draft','pending','published','rejected']);
 export const contentStatus = pgEnum('content_status', ['draft','pending','published','closed']);
@@ -66,3 +66,15 @@ export const companyProfileRevisions = pgTable('company_profile_revisions', {
 export const companyMedia = pgTable('company_media', {
  id:uuid().primaryKey().defaultRandom(), companyId:uuid('company_id').notNull().references(()=>companies.id,{onDelete:'cascade'}), kind:text().notNull(), key:text().notNull(), createdAt:created()
 });
+
+export const serviceListings = pgTable('service_listings', {
+ id: uuid().primaryKey(),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ content: jsonb().$type<ServiceContent>().notNull(),
+ published: jsonb().$type<ServiceContent>(),
+ status: text().$type<'draft' | 'pending' | 'approved' | 'rejected'>().notNull().default('draft'),
+ version: integer().notNull().default(0),
+ visible: boolean().notNull().default(true),
+ note: text().notNull().default(''),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [index('service_listings_company_idx').on(table.companyId), index('service_listings_status_idx').on(table.status, table.updatedAt)]);
