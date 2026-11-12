@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { and, eq, desc, sql } from 'drizzle-orm';
-import { companies, companyMedia, memberships, serviceListings, users, type createDatabase } from '@leek/db';
+import { companies, companyMedia, memberships, productListings, serviceListings, users, type createDatabase } from '@leek/db';
 import type { AuthHandler } from './app';
 
 type Database=ReturnType<typeof createDatabase>['db'];
@@ -73,7 +73,13 @@ export function createMediaRoutes(db:Database,auth:AuthHandler,origins:string[])
     sql`${serviceListings.published}->>'photo' = ${url}`,
    )).limit(1)).length > 0
    : false;
-  if(!published && !publicServicePhoto){
+  const publicProductPhoto = !published && !publicServicePhoto && company?.status === 'published' && asset.kind === 'image'
+   ? (await db.select({ id: productListings.id }).from(productListings).where(and(
+    eq(productListings.companyId, asset.companyId), eq(productListings.visible, true),
+    sql`${productListings.published}->'photos' @> ${JSON.stringify([url])}::jsonb`,
+   )).limit(1)).length > 0
+   : false;
+  if(!published && !publicServicePhoto && !publicProductPhoto){
    const session=await auth.api.getSession({headers:c.req.raw.headers,query:{disableRefresh:true}});if(!session)return c.notFound();
    const [member]=await db.select().from(memberships).where(and(eq(memberships.companyId,asset.companyId),eq(memberships.userId,session.user.id)));
    const [user]=await db.select().from(users).where(eq(users.id,session.user.id));

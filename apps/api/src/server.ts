@@ -1,3 +1,5 @@
+import { createProductListings } from './product-listings';
+import { logError } from './log-error';
 import { createServiceListings } from './service-listings';
 import { createMediaRoutes } from './media';
 import { createProfileService } from './company-profile';
@@ -32,8 +34,17 @@ const repository: Repository = {
 const port=Number(process.env.PORT??3003);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('PORT must be a valid port');
 const origins = Array.from(new Set([...(process.env.ALLOWED_ORIGINS ?? '').split(',').map(x=>x.trim()).filter(Boolean), ...(publicURL ? [new URL(publicURL).origin] : []), ...[process.env.ADMIN_URL].filter((x): x is string => Boolean(x)).map(x => new URL(x).origin)]));
-const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined, database ? createProfileService(database.db) : undefined, database && auth ? createMediaRoutes(database.db,auth,origins) : undefined, database ? createServiceListings(database.db) : undefined).fetch,port,hostname:'0.0.0.0'});
+const products = database ? createProductListings(database.db) : undefined;
+const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined, database ? createProfileService(database.db) : undefined, database && auth ? createMediaRoutes(database.db,auth,origins) : undefined, database ? createServiceListings(database.db) : undefined, products).fetch,port,hostname:'0.0.0.0'});
 console.log(`LEEK API listening on ${port} (${demo?'DEMO':'database'})`);
+let syncing = false;
+const syncTimer = products ? setInterval(async () => {
+ if (syncing) return;
+ syncing = true;
+ try { await products.sync(); } catch (error) { logError('Product sync failed', error); }
+ finally { syncing = false; }
+}, 30_000) : undefined;
+syncTimer?.unref();
 let closing=false;
-async function shutdown(){if(closing)return;closing=true;server.close();await database?.close();process.exit(0);}
+async function shutdown(){if(closing)return;closing=true;clearInterval(syncTimer);server.close();await database?.close();process.exit(0);}
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);

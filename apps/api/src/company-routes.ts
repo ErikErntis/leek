@@ -1,3 +1,5 @@
+import type { createProductListings } from './product-listings';
+import { productActionSchema } from '@leek/contracts';
 import type { createServiceListings } from './service-listings';
 import { serviceSaveSchema } from '@leek/contracts';
 import type { createProfileService } from './company-profile';
@@ -11,7 +13,7 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
     routes.use(path, bodyLimit({ maxSize: 32768 }));
@@ -119,6 +121,45 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     const version = body?.version;
     if (!decision.success || !Number.isSafeInteger(version) || version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
     return c.json(await listings.review(c.req.param('id'), version, decision.data.decision, decision.data.note));
+  });
+  routes.get('/v1/my/companies/:id/products', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    return c.json(await products.own(c.get('userId'), c.req.param('id')));
+  });
+  routes.post('/v1/my/companies/:id/products', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    const companyId = c.req.param('id');
+    if (!validId(companyId)) return c.notFound();
+    const parsed = productActionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'Kontrolli sisestatud andmeid ja veebiaadresse.' }, 400);
+    const userId = c.get('userId');
+    const input = parsed.data;
+    switch (input.action) {
+      case 'catalog': return c.json(await products.catalog(userId, companyId, input.connection, input.cursor));
+      case 'import': return c.json({ items: await products.import(userId, companyId, input.shopId, input.cursor, input.sourceIds) });
+      case 'help': await products.help(userId, companyId, input); return c.json({ ok: true });
+      default: return c.json(await products.save(userId, companyId, input));
+    }
+  });
+  routes.get('/v1/admin/products', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    const [items, requests] = await Promise.all([products.queue(), products.helpQueue()]);
+    return c.json({ items, requests });
+  });
+  routes.post('/v1/admin/products/:id/review', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    const body = await c.req.json().catch(() => null);
+    const decision = reviewDecisionSchema.safeParse({ decision: body?.decision, note: body?.note });
+    if (!decision.success || !Number.isSafeInteger(body?.version) || body.version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
+    return c.json(await products.review(c.req.param('id'), body.version, decision.data.decision, decision.data.note));
+  });
+  routes.post('/v1/admin/product-help/:id/resolve', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    await products.resolveHelp(c.req.param('id'));
+    return c.json({ ok: true });
   });
   routes.get('/v1/admin/access', c => c.json({ role: 'admin' }));
   routes.get('/v1/admin/companies', async c => {

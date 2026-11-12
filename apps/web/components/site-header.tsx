@@ -7,6 +7,7 @@ import { LogoutButton } from './auth/logout-button';
 const links = [
   ['Ettevõtted', '/ettevotted'],
   ['Teenused', '/teenused'],
+  ['Tooted', '/tooted'],
   ['Pakkumised', '/pakkumised'],
   ['Tööpakkumised', '/tookohad'],
   ['Paketid', '/liitu'],

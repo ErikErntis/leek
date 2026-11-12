@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { PublicProfileInput, ServiceContent } from '@leek/contracts';
+import type { ProductContent, PublicProfileInput, ServiceContent, ShopPlatform, SyncedProduct } from '@leek/contracts';
 import { pgTable, uuid, text, timestamp, boolean, uniqueIndex, index, primaryKey, pgEnum, integer, bigint, jsonb } from 'drizzle-orm/pg-core';
 export const publicationStatus = pgEnum('publication_status', ['draft','pending','published','rejected']);
 export const contentStatus = pgEnum('content_status', ['draft','pending','published','closed']);
@@ -78,3 +78,42 @@ export const serviceListings = pgTable('service_listings', {
  note: text().notNull().default(''),
  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, table => [index('service_listings_company_idx').on(table.companyId), index('service_listings_status_idx').on(table.status, table.updatedAt)]);
+
+export const productShops = pgTable('product_shops', {
+ id: uuid().primaryKey().defaultRandom(),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ platform: text().$type<ShopPlatform>().notNull(),
+ url: text().notNull(),
+}, table => [uniqueIndex('product_shops_company_url_idx').on(table.companyId, table.platform, table.url)]);
+
+export const productListings = pgTable('product_listings', {
+ id: uuid().primaryKey(),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ shopId: uuid('shop_id').references(() => productShops.id, { onDelete: 'cascade' }),
+ sourceId: text('source_id'),
+ content: jsonb().$type<ProductContent>().notNull(),
+ published: jsonb().$type<ProductContent>(),
+ storeData: jsonb('store_data').$type<SyncedProduct>(),
+ syncedAt: timestamp('synced_at', { withTimezone: true }),
+ attemptedAt: timestamp('attempted_at', { withTimezone: true }),
+ status: text().$type<'draft' | 'pending' | 'approved' | 'rejected'>().notNull().default('draft'),
+ version: integer().notNull().default(0),
+ note: text().notNull().default(''),
+ visible: boolean().notNull().default(true),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+ index('product_listings_company_idx').on(table.companyId),
+ index('product_listings_status_idx').on(table.status, table.updatedAt),
+ index('product_listings_sync_idx').on(table.attemptedAt).where(sql`${table.shopId} is not null and ${table.visible} and ${table.published} is not null`),
+ uniqueIndex('product_listings_source_idx').on(table.shopId, table.sourceId),
+]);
+
+export const productHelpRequests = pgTable('product_help_requests', {
+ id: uuid().primaryKey().defaultRandom(),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ shopUrl: text('shop_url').notNull(),
+ email: text().notNull(),
+ message: text().notNull(),
+ createdAt: created(),
+ resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+});

@@ -46,6 +46,28 @@ CREATE TABLE IF NOT EXISTS service_listings (
 );
 CREATE INDEX IF NOT EXISTS service_listings_company_idx ON service_listings(company_id);
 CREATE INDEX IF NOT EXISTS service_listings_status_idx ON service_listings(status,updated_at);
+CREATE TABLE IF NOT EXISTS product_shops (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ platform text NOT NULL CHECK(platform IN ('shopify','woocommerce')), url text NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS product_shops_company_url_idx ON product_shops(company_id,platform,url);
+CREATE TABLE IF NOT EXISTS product_listings (
+ id uuid PRIMARY KEY, company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ shop_id uuid REFERENCES product_shops(id) ON DELETE CASCADE, source_id text,
+ content jsonb NOT NULL, published jsonb, store_data jsonb, synced_at timestamptz, attempted_at timestamptz,
+ status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','approved','rejected')),
+ version integer NOT NULL DEFAULT 0, note text NOT NULL DEFAULT '', visible boolean NOT NULL DEFAULT true,
+ updated_at timestamptz NOT NULL DEFAULT now(), CHECK ((shop_id IS NULL) = (source_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS product_listings_company_idx ON product_listings(company_id);
+CREATE INDEX IF NOT EXISTS product_listings_status_idx ON product_listings(status,updated_at);
+CREATE INDEX IF NOT EXISTS product_listings_sync_idx ON product_listings(attempted_at) WHERE shop_id IS NOT NULL AND visible AND published IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS product_listings_source_idx ON product_listings(shop_id,source_id);
+CREATE TABLE IF NOT EXISTS product_help_requests (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ shop_url text NOT NULL, email text NOT NULL, message text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz
+);
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {

@@ -8,6 +8,7 @@ const navigation = [
   ['Ülevaade', '/portaal', LayoutDashboard],
   ['Ettevõtte profiil', '/portaal/profiil', Building2],
   ['Teenused', '/portaal/teenused', Tags],
+  ['Tooted', '/portaal/tooted', Tags],
   ['Töökuulutused', '/portaal/tookuulutused', BriefcaseBusiness],
   ['Pakett ja maksmine', '/portaal/pakett', Layers],
 ] as const;

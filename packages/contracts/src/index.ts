@@ -162,3 +162,5 @@ export function getServicePriceLabel(service: Pick<ServiceContent, 'pricing' | '
  if (prices.length) return 'Alates ' + formatServicePrice(Math.min(...prices));
  return service.priceCents === null ? 'Hind määramata' : formatServicePrice(service.priceCents);
 }
+
+export * from "./products";
