@@ -53,13 +53,14 @@ export type StoreProduct = {
 export type StoreProductPage = { items: StoreProduct[]; next: string | null };
 export type SyncedProduct = Pick<StoreProduct, 'url' | 'priceCents' | 'fromPrice' | 'availability'>;
 export const productSaveSchema = z.object({
- action: z.enum(['draft', 'submit', 'hide', 'show']), id: z.string().uuid(),
+ action: z.enum(['draft', 'publish', 'submit', 'hide', 'show']), id: z.string().uuid(),
  version: z.number().int().min(0).nullable(), content: productContentSchema.optional(),
 }).strict();
 export const productActionSchema = z.union([
  productSaveSchema,
  z.object({ action: z.literal('catalog'), connection: shopConnectionSchema, cursor: z.string().max(2048).nullable() }).strict(),
- z.object({ action: z.literal('import'), shopId: z.string().uuid(), cursor: z.string().max(2048).nullable(), sourceIds: z.array(z.string().min(1).max(100)).min(1).max(20) }).strict(),
+ z.object({ action: z.literal('import'), publish: z.boolean().optional(), shopId: z.string().uuid(), cursor: z.string().max(2048).nullable(), sourceIds: z.array(z.string().min(1).max(100)).min(1).max(20) }).strict(),
+ z.object({ action: z.literal('publish-imported'), ids: z.array(z.string().uuid()).min(1).max(100) }).strict(),
  z.object({ action: z.literal('help'), id: z.string().uuid(), shopUrl: productLinkSchema.refine(Boolean), email: z.string().trim().email().max(254), message: z.string().trim().min(5).max(1000) }).strict(),
 ]);
 export type ProductSave = z.infer<typeof productSaveSchema>;

@@ -137,23 +137,15 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     const input = parsed.data;
     switch (input.action) {
       case 'catalog': return c.json(await products.catalog(userId, companyId, input.connection, input.cursor));
-      case 'import': return c.json({ items: await products.import(userId, companyId, input.shopId, input.cursor, input.sourceIds) });
+      case 'import': return c.json({ items: await products.import(userId, companyId, input.shopId, input.cursor, input.sourceIds, input.publish) });
+      case 'publish-imported': return c.json({ items: await products.publishImported(userId, companyId, input.ids) });
       case 'help': await products.help(userId, companyId, input); return c.json({ ok: true });
       default: return c.json(await products.save(userId, companyId, input));
     }
   });
   routes.get('/v1/admin/products', async c => {
     if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
-    const [items, requests] = await Promise.all([products.queue(), products.helpQueue()]);
-    return c.json({ items, requests });
-  });
-  routes.post('/v1/admin/products/:id/review', async c => {
-    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
-    if (!validId(c.req.param('id'))) return c.notFound();
-    const body = await c.req.json().catch(() => null);
-    const decision = reviewDecisionSchema.safeParse({ decision: body?.decision, note: body?.note });
-    if (!decision.success || !Number.isSafeInteger(body?.version) || body.version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
-    return c.json(await products.review(c.req.param('id'), body.version, decision.data.decision, decision.data.note));
+    return c.json({ items: [], requests: await products.helpQueue() });
   });
   routes.post('/v1/admin/product-help/:id/resolve', async c => {
     if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);

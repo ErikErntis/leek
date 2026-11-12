@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
 import * as schema from '@leek/db/schema';
-import type { ShopConnectionInput, StoreProduct } from '@leek/contracts';
+import type { ProductContent, ShopConnectionInput, StoreProduct } from '@leek/contracts';
 import { createAuth } from '@leek/auth/server';
 import { billingMigration } from '../../../packages/db/src/migrate-billing';
 import { createApp } from './app';
@@ -109,7 +109,7 @@ test('Wix catalog version detection reads visible products and sends credentials
  assert.ok(calls.every(call => call.url.origin === 'https://www.wixapis.com' && call.headers?.authorization === apiKey && call.headers['wix-site-id'] === siteId));
 });
 
-test('product API moderates manual and imported products, syncs shops and routes private help requests', async () => {
+test('product API publishes manual and imported products directly, syncs shops and routes private help requests', async () => {
  const client = new PGlite();
  try {
   for (const file of ['0000_stormy_paibok.sql', '0001_flaky_nebula.sql', '0002_moaning_zarda.sql']) {
@@ -169,7 +169,6 @@ test('product API moderates manual and imported products, syncs shops and routes
   const photoPath = `/v1/media/${photo!.id}`;
   const ownerPath = `/v1/my/companies/${companyId}/products`;
   const adminPath = '/v1/admin/products';
-  const approve = (id: string, version: number) => request(`${adminPath}/${id}/review`, { decision: 'approve', version }, admin.cookie, origins[1]);
   const catalog = { action: 'catalog', connection: { platform: 'woocommerce', url: 'https://vello.ee' }, cursor: null };
   assert.equal((await request(ownerPath, catalog, outsider.cookie)).status, 404);
   assert.equal((await request(ownerPath, catalog, owner.cookie, 'https://foreign.test')).status, 403);
@@ -188,13 +187,14 @@ test('product API moderates manual and imported products, syncs shops and routes
   wixKeyUsed = undefined;
   await okay(await request(ownerPath, { ...wixCatalog, connection: { platform: 'wix', url: 'https://vello.ee' } }, owner.cookie));
   assert.equal(wixKeyUsed, wix.apiKey);
-  const importInput = { action: 'import', shopId: shop.id, cursor: null, sourceIds: ['1'] };
+  const importInput = { action: 'import', shopId: shop.id, cursor: null, sourceIds: ['1'], publish: true };
+  await db.update(schema.companies).set({ status: 'pending' }).where(eq(schema.companies.id, companyId));
+  assert.equal((await request(ownerPath, importInput, owner.cookie)).status, 409);
+  await db.update(schema.companies).set({ status: 'published' }).where(eq(schema.companies.id, companyId));
   const imported = (await okay(await request(ownerPath, importInput, owner.cookie))).items[0];
+  assert.equal(imported.status, 'approved');
   assert.equal((await okay(await request(ownerPath, importInput, owner.cookie))).items.length, 0);
-  assert.equal((await request(`/v1/products/${imported.id}`)).status, 404);
-  const submitted = await okay(await request(ownerPath, { action: 'submit', id: imported.id, version: imported.version, content: imported.content }, owner.cookie));
   assert.equal((await request(adminPath, undefined, owner.cookie)).status, 403);
-  await okay(await approve(imported.id, submitted.version));
   const publicPath = `/v1/products/${imported.id}`;
   assert.equal((await okay(await request(publicPath))).content.priceCents, 1800);
   storeItem = { ...storeItem, priceCents: 2250, availability: 'sold_out' };
@@ -211,15 +211,33 @@ test('product API moderates manual and imported products, syncs shops and routes
   assert.equal((await okay(await request(publicPath))).content.shopUrl, '');
 
   const id = randomUUID();
-  const content = { title: 'Puidust lõikelaud', description: 'Tammest lõikelaud.', category: 'Kodu ja sisustus',
+  const content: ProductContent = { title: 'Puidust lõikelaud', description: 'Tammest lõikelaud.', category: 'Kodu ja sisustus',
    photos: [`/api/media/${photo!.id}`], availability: 'in_stock', priceCents: 2900, shopUrl: '', variants: [] };
-  const manual = await okay(await request(ownerPath, { action: 'submit', id, version: null, content }, owner.cookie));
+  const manual = await okay(await request(ownerPath, { action: 'draft', id, version: null, content }, owner.cookie));
   assert.equal((await request(photoPath)).status, 404);
-  const approved = await okay(await approve(id, manual.version));
+  const published = await okay(await request(ownerPath, { action: 'publish', id, version: manual.version, content }, owner.cookie));
   assert.equal((await request(photoPath)).status, 302);
   assert.equal((await okay(await request('/v1/products?q=l%C3%B5ikelaud&company=vello'))).items[0].id, id);
-  await okay(await request(ownerPath, { action: 'hide', id, version: approved.version }, owner.cookie));
+  const updatedContent = { ...content, title: 'Uuendatud lõikelaud' };
+  const savedDraft = await okay(await request(ownerPath, { action: 'draft', id, version: published.version, content: updatedContent }, owner.cookie));
+  assert.equal((await okay(await request(`/v1/products/${id}`))).content.title, content.title);
+  const updated = await okay(await request(ownerPath, { action: 'publish', id, version: savedDraft.version, content: updatedContent }, owner.cookie));
+  assert.equal((await okay(await request(`/v1/products/${id}`))).content.title, updatedContent.title);
+  await okay(await request(ownerPath, { action: 'hide', id, version: updated.version }, owner.cookie));
   assert.equal((await request(photoPath)).status, 404);
+
+  const drafts = Array.from({ length: 50 }, (_, index) => ({
+   id: randomUUID(), companyId, shopId: shop.id, sourceId: String(index + 10),
+   content: { ...content, title: `Imporditud laud ${index + 1}`, description: '', photos: [] },
+   status: index === 0 ? 'pending' as const : 'draft' as const,
+  }));
+  await db.insert(schema.productListings).values(drafts);
+  const ids = drafts.map(item => item.id);
+  assert.equal((await request(ownerPath, { action: 'publish-imported', ids }, outsider.cookie)).status, 404);
+  const bulk = await okay(await request(ownerPath, { action: 'publish-imported', ids }, owner.cookie));
+  assert.equal(bulk.items.length, 50);
+  assert.equal((await okay(await request(ownerPath, { action: 'publish-imported', ids }, owner.cookie))).items.length, 0);
+  assert.equal((await okay(await request(`/v1/products/${ids[0]}`))).content.title, drafts[0]!.content.title);
   const helpId = randomUUID();
   const help = { action: 'help', id: helpId, shopUrl: 'https://vello.ee', email: 'kontakt@products.test', message: 'Vajan poe seadistamisel abi.' };
   await okay(await request(ownerPath, help, owner.cookie));

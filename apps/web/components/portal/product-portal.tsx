@@ -8,7 +8,7 @@ import {
 } from '@leek/contracts';
 import type { PortalCompany } from '../../lib/portal';
 
-const statuses = { draft: 'Mustand', pending: 'Ülevaatamisel', approved: 'Kinnitatud', rejected: 'Tagasi lükatud' };
+const statuses = { draft: 'Mustand', pending: 'Avaldamata', approved: 'Avaldatud', rejected: 'Tagasi lükatud' };
 const shopNames = { shopify: 'Shopify', woocommerce: 'WooCommerce', wix: 'Wix Stores' };
 const blank: ProductContent = { title: '', description: '', category: productCategories[0], photos: [], availability: 'in_stock', priceCents: null, shopUrl: '', variants: [] };
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -53,7 +53,9 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
 
  const current = items.find(item => item.id === selected?.id);
  const linked = Boolean(current?.shopId);
- const locked = current?.status === 'pending';
+ const canPublish = company.status === 'published';
+ const unpublishedImports = items.filter(item => item.shopId && !item.published && item.status !== 'rejected' && item.content.title.trim().length > 0).slice(0, 100);
+ const availableCatalogItems = catalog?.items.filter(item => !catalog.imported.includes(item.sourceId)) ?? [];
  const route = `/api/portal/company/${company.id}`;
 
  const savedConnection = shops.find(shop => shop.url === connection.url && shop.platform === connection.platform);
@@ -126,7 +128,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  function save(action: ProductSave['action']) {
   if (!selected) return;
   void run(async () => {
-   const changes = action === 'draft' || action === 'submit';
+   const changes = action === 'draft' || action === 'publish';
    const body: ProductSave = { ...selected, action };
    if (changes) {
     body.content = linked ? content : {
@@ -138,12 +140,21 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    setItems(old => [item, ...old.filter(entry => entry.id !== item.id)]);
    setSelected({ id: item.id, version: item.version });
    if (changes) setContent(item.content);
-   setMessage({ draft: 'Mustand salvestatud.', submit: 'Toode esitatud ülevaatusele.', hide: 'Toode peidetud.', show: 'Toode jälle avalik.' }[action]);
+   setMessage({ draft: 'Mustand salvestatud.', publish: 'Toode on avalik.', submit: 'Toode on avalik.', hide: 'Toode peidetud.', show: 'Toode jälle avalik.' }[action]);
   });
  }
  function submit(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
-  if (!locked) save('submit');
+  if (canPublish) save('publish');
+ }
+ function publishImported() {
+  void run(async () => {
+   const ids = unpublishedImports.map(item => item.id);
+   const { items: published } = await post<{ items: CompanyProduct[] }>({ action: 'publish-imported', ids });
+   const updates = new Map(published.map(item => [item.id, item]));
+   setItems(old => old.map(item => updates.get(item.id) ?? item));
+   setMessage(published.length ? `Avaldatud tooteid: ${published.length}.` : 'Avaldatavaid mustandeid ei leitud. Värskenda lehte.');
+  });
  }
  function upload(file?: File) {
   if (!file) return;
@@ -184,9 +195,13 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    </div>
    <section className="panel product-section">
     <h2>Minu tooted</h2>
+    {canPublish && unpublishedImports.length > 0 && <button type="button" className="button" disabled={busy} onClick={publishImported}>
+     Avalda imporditud mustandid ({unpublishedImports.length})
+    </button>}
     {items.length ? <ul className="service-owner-list">{items.map(item => <li key={item.id}>
-     <button type="button" className="text-link" onClick={() => edit(item)}>{item.content.title || 'Nimeta toode'}</button>
-     <span className="muted">{statuses[item.status]}{item.published && (item.visible ? ' · Avalik' : ' · Peidetud')}{item.shopId && ' · E-poest'}</span>
+     <button type="button" className="text-link" disabled={busy} onClick={() => edit(item)}>{item.content.title || 'Nimeta toode'}</button>
+     <span className="muted">{item.status === 'approved' && !item.visible ? 'Peidetud' : statuses[item.status]}
+     {item.published && item.status !== 'approved' && (item.visible ? ' · Avalik versioon' : ' · Peidetud')}{item.shopId && ' · E-poest'}</span>
      {item.published && item.visible && <a className="text-link" href={`/tooted/${item.id}`}>Vaata avalikku toodet</a>}
     </li>)}</ul> : <p>Lisa esimene toode.</p>}
    </section>
@@ -195,13 +210,13 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    <p className="muted">{statuses[current?.status ?? 'draft']}{current?.note && ` · Halduri märkus: ${current.note}`}</p>
    <div className="service-editor-grid">
     <div className="service-editor-main">
-     <fieldset className="profile-edit-card service-fields" disabled={busy || locked}>
+     <fieldset className="profile-edit-card service-fields" disabled={busy}>
       <legend>Toote andmed</legend>
       <label>Toote nimi<input value={content.title} maxLength={120} onChange={event => change('title', event.target.value)} /></label>
       <label>Kategooria<select value={content.category} onChange={event => change('category', event.target.value as ProductContent['category'])}>{productCategories.map(item => <option key={item}>{item}</option>)}</select></label>
       <label>Kirjeldus<textarea value={content.description} rows={5} maxLength={2000} onChange={event => change('description', event.target.value)} /></label>
      </fieldset>
-     <fieldset className="profile-edit-card service-fields" disabled={busy || locked}>
+     <fieldset className="profile-edit-card service-fields" disabled={busy}>
       <legend>Toote pildid</legend>
       <div className="product-edit-photos">{content.photos.map((photo, index) => <div key={`${photo}-${index}`}>
        <img src={photo} alt={`Toote pilt ${index + 1}`} width={115} height={90} referrerPolicy="no-referrer" />
@@ -215,7 +230,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
       <small>JPG, PNG või WebP · kuni 5 pilti, igaüks kuni 5 MB</small>
      </fieldset>
     </div>
-    <fieldset className="profile-edit-card service-fields" disabled={busy || locked}>
+    <fieldset className="profile-edit-card service-fields" disabled={busy}>
      <legend>Hind ja saadavus</legend>
      {linked ? <p className="muted">Hind, saadavus ja ostulink uuenevad e-poe andmetest. Variandid valib klient e-poes.</p> : <>
       {!variants.length && <>
@@ -238,10 +253,10 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    </div>
    <div className="service-editor-actions">
     {current?.published && <button type="button" className="button secondary" disabled={busy} onClick={() => save(current.visible ? 'hide' : 'show')}>{current.visible ? 'Peida toode' : 'Näita toodet'}</button>}
-    {!locked && <button type="button" className="button secondary" disabled={busy} onClick={() => save('draft')}>Salvesta mustand</button>}
-    {!locked && <button type="submit" className="button" disabled={busy || company.status !== 'published'}>Esita ülevaatusele</button>}
+    <button type="button" className="button secondary" disabled={busy} onClick={() => save('draft')}>Salvesta mustand</button>
+    <button type="submit" className="button" disabled={busy || !canPublish}>{current?.published && current.visible ? 'Avalda muudatused' : 'Avalda toode'}</button>
    </div>
-   {company.status !== 'published' && <p className="muted">Toote saad ülevaatusele esitada pärast ettevõtte kinnitamist.</p>}
+   {company.status !== 'published' && <p className="muted">Toote saad avaldada pärast ettevõtte kinnitamist.</p>}
   </form>}
   {mode === 'store' && <>
    <form className="panel service-fields" aria-busy={busy} onSubmit={event => { event.preventDefault(); void loadStore(connection, null); }}>
@@ -276,7 +291,13 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    </form>
    {catalog && <section className="panel product-section">
     <h2>Vali imporditavad tooted</h2>
-    <p>Valitud tooted lisatakse mustandina. Pärast kinnitamist uuendatakse hinda ja saadavust e-poest.</p>
+    <p>{canPublish ? 'Valitud tooted avaldatakse LEEKis kohe. Hind ja saadavus uuenevad e-poest.'
+     : 'Valitud tooted lisatakse mustandina. Pärast ettevõtte kinnitamist saad need korraga avaldada.'}</p>
+    {availableCatalogItems.length > 0 && <label>
+     <input type="checkbox" disabled={busy} checked={availableCatalogItems.every(item => checked.includes(item.sourceId))} onChange={event => {
+      setChecked(event.target.checked ? availableCatalogItems.map(item => item.sourceId) : []);
+     }} /> Vali kõik sellel lehel
+    </label>}
     {catalog.items.length ? <ul className="product-import-list">{catalog.items.map(item => {
      const imported = catalog.imported.includes(item.sourceId);
      return <li key={item.sourceId}><label>
@@ -290,12 +311,12 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
      {catalog.cursor && <button type="button" className="button secondary" disabled={busy} onClick={() => void loadStore(connection, null)}>Esimene leht</button>}
      {catalog.next && <button type="button" className="button secondary" disabled={busy} onClick={() => void loadStore(connection, catalog.next)}>Järgmine leht</button>}
      <button type="button" className="button" disabled={busy || !checked.length} onClick={() => void run(async () => {
-      const { items: imported } = await post<{ items: CompanyProduct[] }>({ action: 'import', shopId: catalog.shop.id, cursor: catalog.cursor, sourceIds: checked });
+      const { items: imported } = await post<{ items: CompanyProduct[] }>({ action: 'import', shopId: catalog.shop.id, cursor: catalog.cursor, sourceIds: checked, publish: canPublish });
       setItems(old => [...imported, ...old]);
       setCatalog({ ...catalog, imported: [...new Set([...catalog.imported, ...checked])] });
       setChecked([]);
-      setMessage(imported.length ? `Mustandina lisatud: ${imported.length}.` : 'Valitud tooted on juba imporditud.');
-     })}>Impordi valitud tooted {checked.length > 0 && `(${checked.length})`}</button>
+      setMessage(imported.length ? (canPublish ? `Avaldatud tooteid: ${imported.length}.` : `Mustandina lisatud: ${imported.length}.`) : 'Valitud tooted on juba imporditud.');
+     })}>{canPublish ? 'Impordi ja avalda' : 'Impordi mustandina'} {checked.length > 0 && `(${checked.length})`}</button>
     </div>
    </section>}
   </>}

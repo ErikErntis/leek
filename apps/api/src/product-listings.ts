@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { localProductPhoto, productCategories, type CompanyProduct, type ProductHelpInput, type ProductSave, type PublicProduct, type ShopConnectionInput, type StoreProduct, type SyncedProduct } from '@leek/contracts';
 import { companies, companyMedia, memberships, productHelpRequests, productListings, productShops, type createDatabase } from '@leek/db';
 import { CompanyError } from './company-service';
@@ -72,22 +72,22 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    if ((current?.version ?? null) !== version) conflict();
 
    if (action === 'hide' || action === 'show') {
-    if (!current?.published) throw new CompanyError(409, 'Toode tuleb enne kinnitada.');
+    if (!current?.published) throw new CompanyError(409, 'Toode tuleb enne avaldada.');
     const [saved] = await db.update(productListings).set({
      visible: action === 'show', version: current.version + 1, updatedAt: new Date(),
     }).where(and(match, eq(productListings.version, current.version))).returning();
     return companyProduct(saved ?? conflict());
    }
 
-   if (current?.status === 'pending') throw new CompanyError(409, 'Toode ootab halduri otsust.');
    if (!content) throw new CompanyError(400, 'Lisa toote andmed.');
    if (current?.shopId && (content.priceCents !== current.content.priceCents || content.shopUrl !== current.content.shopUrl ||
     content.availability !== current.content.availability || content.variants.length)) {
     throw new CompanyError(400, 'Lingitud toote hinna ja saadavuse saad muuta e-poes.');
    }
-   if (action === 'submit') {
-    if (company.status !== 'published') throw new CompanyError(409, 'Toote saab esitada pärast ettevõtte kinnitamist.');
-    if (content.title.length < 2 || content.description.length < 5) throw new CompanyError(400, 'Lisa toote nimi ja kirjeldus.');
+   const publish = action === 'publish' || action === 'submit';
+   if (publish) {
+    if (company.status !== 'published') throw new CompanyError(409, 'Toote saab avaldada pärast ettevõtte kinnitamist.');
+    if (content.title.length < (current?.shopId ? 1 : 2) || (!current?.shopId && content.description.length < 5)) throw new CompanyError(400, 'Lisa toote nimi ja kirjeldus.');
     if (content.variants.some(item => !item.name || item.priceCents === null)) {
      throw new CompanyError(400, 'Lisa iga variandi nimi ja hind.');
     }
@@ -103,7 +103,10 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
      .where(and(eq(companyMedia.companyId, companyId), eq(companyMedia.kind, 'image'), inArray(companyMedia.id, local)));
     if (photos.length !== local.length) throw new CompanyError(400, 'Vali selle ettevõtte üleslaaditud fotod.');
    }
-   const values = { content, status: action === 'submit' ? 'pending' as const : 'draft' as const, note: '', updatedAt: new Date() };
+   const values = {
+    content, status: publish ? 'approved' as const : 'draft' as const, note: '', updatedAt: new Date(),
+    ...(publish ? { published: content, visible: true } : {}),
+   };
    const [saved] = current
     ? await db.update(productListings).set({ ...values, version: current.version + 1 })
      .where(and(match, eq(productListings.version, current.version))).returning()
@@ -139,8 +142,9 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    return { ...page, shop, imported: imported.map(item => item.sourceId) };
   },
 
-  async import(userId: string, companyId: string, shopId: string, cursor: string | null, sourceIds: string[]) {
-   await ownerCompany(userId, companyId);
+  async import(userId: string, companyId: string, shopId: string, cursor: string | null, sourceIds: string[], publish = false) {
+   const company = await ownerCompany(userId, companyId);
+   if (publish && company.status !== 'published') throw new CompanyError(409, 'Tooted saab avaldada pärast ettevõtte kinnitamist.');
    const [shop] = await db.select().from(productShops).where(and(eq(productShops.companyId, companyId), eq(productShops.id, shopId)));
    if (!shop) throw new CompanyError(404, 'E-poodi ei leitud.');
    const requested = new Set(sourceIds);
@@ -148,13 +152,16 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    const selected = items.filter(item => requested.has(item.sourceId));
    if (new Set(selected.map(item => item.sourceId)).size !== requested.size) throw new CompanyError(409, 'E-poe tootevalik on muutunud. Laadi leht uuesti.');
    const now = new Date();
-   const inserted = await db.insert(productListings).values(selected.map(item => ({
-    id: randomUUID(), companyId, shopId, sourceId: item.sourceId, storeData: syncedData(item), syncedAt: now,
-    content: {
+   const inserted = await db.insert(productListings).values(selected.map(item => {
+    const content = {
      title: item.title, description: item.description, category: productCategories[5], photos: item.photos,
      priceCents: item.priceCents, availability: item.availability, shopUrl: item.url, variants: [],
-    },
-   }))).onConflictDoNothing({ target: [productListings.shopId, productListings.sourceId] }).returning();
+    };
+    return {
+     id: randomUUID(), companyId, shopId, sourceId: item.sourceId, storeData: syncedData(item), syncedAt: now, content,
+     ...(publish ? { published: content, status: 'approved' as const } : {}),
+    };
+   })).onConflictDoNothing({ target: [productListings.shopId, productListings.sourceId] }).returning();
    return inserted.map(companyProduct);
   },
 
@@ -178,19 +185,18 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    await db.update(productHelpRequests).set({ resolvedAt: new Date() }).where(and(eq(productHelpRequests.id, id), isNull(productHelpRequests.resolvedAt)));
   },
 
-  async queue() {
-   return db.select({ product: productListings, companyName: companies.name }).from(productListings)
-    .innerJoin(companies, eq(companies.id, productListings.companyId))
-    .where(eq(productListings.status, 'pending')).orderBy(productListings.updatedAt);
-  },
-
-  async review(id: string, version: number, decision: 'approve' | 'reject', note: string) {
-   const [saved] = await db.update(productListings).set({
-    status: decision === 'approve' ? 'approved' : 'rejected',
-    ...(decision === 'approve' ? { published: productListings.content } : {}),
-    version: version + 1, note, updatedAt: new Date(),
-   }).where(and(eq(productListings.id, id), eq(productListings.version, version), eq(productListings.status, 'pending'))).returning();
-   return companyProduct(saved ?? conflict());
+  async publishImported(userId: string, companyId: string, ids: string[]) {
+   const company = await ownerCompany(userId, companyId);
+   if (company.status !== 'published') throw new CompanyError(409, 'Tooted saab avaldada pärast ettevõtte kinnitamist.');
+   const rows = await db.update(productListings).set({
+    published: productListings.content, status: 'approved', visible: true, note: '',
+    version: sql`${productListings.version} + 1`, updatedAt: new Date(),
+   }).where(and(
+    eq(productListings.companyId, companyId), inArray(productListings.id, ids), isNotNull(productListings.shopId),
+    isNull(productListings.published), ne(productListings.status, 'rejected'),
+    sql`length(trim(${productListings.content}->>'title')) > 0`,
+   )).returning();
+   return rows.map(companyProduct);
   },
 
   async list(query: string, slug?: string, offset = 0) {
