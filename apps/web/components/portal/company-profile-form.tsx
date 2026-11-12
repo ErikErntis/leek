@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, ImagePlus, LockKeyhole, MapPin, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Check, Image, ImagePlus, Images, LockKeyhole, MapPin, ShieldCheck, ArrowRight, Upload } from 'lucide-react';
 import { categories, employeeBands, profileSaveSchema, companyDisplayName, type OwnProfile, type PublicProfileInput } from '@leek/contracts';
 
 function publicValues(data: OwnProfile): PublicProfileInput {
@@ -14,18 +14,132 @@ function Field({label,id,error,hint,children}:{label:string;id:string;error?:str
  return <div className="profile-field"><label htmlFor={id}>{label}</label>{children}{hint&&<small>{hint}</small>}{error&&<p className="profile-field-error" id={`${id}-error`}>{error}</p>}</div>;
 }
 
+type MediaKind = 'image' | 'logo';
+const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+function ProfileMediaFields({image, logo, disabled, uploading, error, onUpload, onRemoveLogo}: {
+ image: string;
+ logo: string;
+ disabled: boolean;
+ uploading: MediaKind | null;
+ error: string;
+ onUpload: (kind: MediaKind, file?: File) => Promise<void>;
+ onRemoveLogo: () => void;
+}) {
+ const coverInput = useRef<HTMLInputElement>(null);
+ const logoInput = useRef<HTMLInputElement>(null);
+ const logoButton = useRef<HTMLButtonElement>(null);
+ const [dragging, setDragging] = useState(false);
+ const titleId = useId();
+ const hintId = useId();
+
+ return (
+  <section className="profile-edit-card profile-media" aria-labelledby={titleId}>
+   <h2 id={titleId} className="profile-media-title">
+    <span className="profile-media-icon"><Images size={18} aria-hidden="true" /></span>
+    Profiili pildid
+   </h2>
+   <fieldset className="profile-media-fields" disabled={disabled} aria-labelledby={titleId} aria-describedby={hintId}>
+    <div className="profile-media-cover-heading">
+     <h3>Kaanepilt</h3>
+     <span>Soovituslik kuvasuhe 16 : 9</span>
+    </div>
+    <div
+     className={`profile-media-drop${image ? ' has-image' : ''}${dragging && !disabled ? ' is-dragging' : ''}`}
+     onDragOver={event => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
+      if (!disabled) setDragging(true);
+     }}
+     onDragLeave={event => {
+      if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
+       setDragging(false);
+      }
+     }}
+     onDrop={event => {
+      event.preventDefault();
+      setDragging(false);
+      if (!disabled) void onUpload('image', event.dataTransfer.files[0]);
+     }}
+    >
+     {image && <img src={image} alt="Kaanepildi eelvaade" />}
+     <div className="profile-media-cover-controls">
+      {!image && <ImagePlus size={21} aria-hidden="true" />}
+      <button type="button" className="profile-media-button profile-media-primary" onClick={() => coverInput.current?.click()}>
+       {uploading === 'image' ? 'Laadin üles…' : image ? 'Vaheta kaanepilti' : 'Vali kaanepilt'}
+      </button>
+      {!image && !disabled && <span className="profile-media-drag-hint">või lohista pilt siia</span>}
+     </div>
+     <input
+      ref={coverInput}
+      type="file"
+      accept={imageTypes.join(',')}
+      aria-label="Vali kaanepilt"
+      hidden
+      onChange={event => {
+       void onUpload('image', event.currentTarget.files?.[0]);
+       event.currentTarget.value = '';
+      }}
+     />
+    </div>
+    <div className="profile-media-logo">
+     <div className="profile-media-logo-preview">
+      {logo ? <img src={logo} alt="Logo eelvaade" /> : <Image size={22} aria-hidden="true" />}
+     </div>
+     <div>
+      <h3>Logo</h3>
+      <span className="profile-media-hint">Soovituslikult ruudukujuline</span>
+      <div className="profile-media-logo-actions">
+       <button ref={logoButton} type="button" className="profile-media-button" onClick={() => logoInput.current?.click()}>
+        <Upload size={15} aria-hidden="true" />
+        {uploading === 'logo' ? 'Laadin üles…' : logo ? 'Vaheta logo' : 'Vali logo'}
+       </button>
+       {logo && (
+        <button type="button" className="profile-media-button profile-media-quiet" aria-label="Eemalda logo" onClick={() => {
+         onRemoveLogo();
+         logoButton.current?.focus();
+        }}>Eemalda</button>
+       )}
+      </div>
+      <input
+       ref={logoInput}
+       type="file"
+       accept={imageTypes.join(',')}
+       aria-label="Vali logo"
+       hidden
+       onChange={event => {
+        void onUpload('logo', event.currentTarget.files?.[0]);
+        event.currentTarget.value = '';
+       }}
+      />
+     </div>
+    </div>
+   </fieldset>
+   <div id={hintId} className="profile-media-footer">
+    <span>JPG, PNG või WebP · kuni 5 MB pildi kohta</span>
+    <span>Rakendamiseks salvesta profiil.</span>
+   </div>
+   {uploading && <p className="profile-media-status" role="status">Laadin {uploading === 'image' ? 'kaanepilti' : 'logo'} üles…</p>}
+   {error && <p className="profile-media-error" role="alert">{error}</p>}
+  </section>
+ );
+}
+
 export function CompanyProfileForm({initial}:{initial:OwnProfile}){
  const [data,setData]=useState(initial);
  const [values,setValues]=useState(()=>publicValues(initial));
  const [contact,setContact]=useState(()=>initial.company.contact??{name:'',role:'',email:'',phone:''});
  const [errors,setErrors]=useState<Record<string,string>>({});
  const [message,setMessage]=useState('');const [failure,setFailure]=useState('');const [busy,setBusy]=useState(false);
- const [uploading,setUploading]=useState(false);
+ const [uploading,setUploading]=useState<MediaKind | null>(null);
+ const [uploadError,setUploadError]=useState('');
  const pending=useRef(false);const form=useRef<HTMLFormElement>(null);const prefix=useId();
  const baseline=useRef(JSON.stringify({publicProfile:publicValues(initial),contact:initial.company.contact??{name:'',role:'',email:'',phone:''}}));
  const dirty=JSON.stringify({publicProfile:values,contact})!==baseline.current;
  const publicLocked=data.company.status==='pending';
  const displayName=companyDisplayName(values);
+ const coverImage = values.image ?? data.company.image;
  const checks=[Boolean(values.name),Boolean(values.email),Boolean(values.tagline),Boolean(values.description),Boolean(values.municipality),Boolean(values.phone),Boolean(values.logo)];
  const completion=Math.round(checks.filter(Boolean).length/checks.length*100);
  useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
@@ -34,16 +148,18 @@ export function CompanyProfileForm({initial}:{initial:OwnProfile}){
  }
  function attributes(key:keyof PublicProfileInput){const path=`publicProfile.${key}`;return {id:`${prefix}-${path}`,name:path,'aria-invalid':Boolean(errors[path]),'aria-describedby':errors[path]?`${prefix}-${path}-error`:undefined};}
  function contactAttributes(key:keyof typeof contact){const path=`contact.${key}`;return {id:`${prefix}-${path}`,name:path,'aria-invalid':Boolean(errors[path]),'aria-describedby':errors[path]?`${prefix}-${path}-error`:undefined};}
- async function upload(kind:'image'|'logo',file?:File){
-  if(!file||pending.current)return;
-  if(file.size>5*1024*1024){setFailure('Pildi suurus võib olla kuni 5 MB.');return;}
-  pending.current=true;setBusy(true);setUploading(true);setFailure('');
+ async function upload(kind:MediaKind,file?:File){
+  if(!file||pending.current||publicLocked)return;
+  setMessage('');
+  if(file.size>5*1024*1024){setUploadError('Pildi suurus võib olla kuni 5 MB.');return;}
+  if(!file.size||(file.type&&!imageTypes.includes(file.type))){setUploadError('Vali JPG-, PNG- või WebP-pilt.');return;}
+  pending.current=true;setBusy(true);setUploading(kind);setUploadError('');setFailure('');
   try{
    const response=await fetch(`/api/portal/company/${data.company.id}/${kind}`,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file,signal:AbortSignal.timeout(30000)});
    const result=await response.json();if(!response.ok)throw new Error(result.error??'Üleslaadimine ebaõnnestus.');
    update(kind,result.url);setMessage('Pilt on üles laaditud. Esitamiseks vajuta „Salvesta muudatused”.');
-  }catch(error){setFailure(error instanceof Error?error.message:'Üleslaadimine ebaõnnestus.');}
-  finally{pending.current=false;setBusy(false);setUploading(false);}
+  }catch(error){setUploadError(error instanceof Error&&!['TypeError','TimeoutError'].includes(error.name)?error.message:'Pildi üleslaadimine ebaõnnestus. Proovi uuesti.');}
+  finally{pending.current=false;setBusy(false);setUploading(null);}
  }
  async function save(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(pending.current)return;setMessage('');setFailure('');
@@ -54,12 +170,12 @@ export function CompanyProfileForm({initial}:{initial:OwnProfile}){
    const response=await fetch(`/api/portal/company/${data.company.id}/profile`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input.data),signal:AbortSignal.timeout(20000)});
    const result=await response.json();if(!response.ok)throw new Error(result.error??'Salvestamine ebaõnnestus.');
    const saved=result as OwnProfile;const next=publicValues(saved);const nextContact=saved.company.contact??contact;
-   baseline.current=JSON.stringify({publicProfile:next,contact:nextContact});setData(saved);setValues(next);setContact(nextContact);
+   baseline.current=JSON.stringify({publicProfile:next,contact:nextContact});setData(saved);setValues(next);setContact(nextContact);setUploadError('');
    setMessage(saved.revision?.status==='pending'?'Kontaktisik on salvestatud. Avalikud muudatused on esitatud ülevaatusele.':saved.company.status==='pending'?'Ettevõtte andmed on esitatud kinnitamiseks.':'Muudatused on salvestatud.');
   }catch(reason){setFailure(reason instanceof Error&&!['TypeError','TimeoutError'].includes(reason.name)?reason.message:'Ühendus ebaõnnestus. Sisestatud andmed on vormis alles.');}
   finally{pending.current=false;setBusy(false);}
  }
- function discard(){const old=JSON.parse(baseline.current) as {publicProfile:PublicProfileInput;contact:typeof contact};setValues(old.publicProfile);setContact(old.contact);setErrors({});setFailure('');setMessage('');}
+ function discard(){const old=JSON.parse(baseline.current) as {publicProfile:PublicProfileInput;contact:typeof contact};setValues(old.publicProfile);setContact(old.contact);setErrors({});setFailure('');setUploadError('');setMessage('');}
  return <form ref={form} onSubmit={save} noValidate className="company-profile-form" aria-busy={busy}>
   <div className="profile-notice"><ShieldCheck size={20} aria-hidden="true"/><div><strong>{publicLocked?'Ettevõtte esmane taotlus on ülevaatamisel.':data.revision?.status==='pending'?'Sinu avalikud muudatused ootavad kinnitamist.':'Avalikud muudatused lähevad ülevaatusele.'}</strong><span>{publicLocked?'Avalikke andmeid saab muuta pärast halduri otsust. Kontaktisikut saad muuta kohe.':'Senine avalik profiil jääb seni nähtavaks. Kontaktisiku andmed salvestuvad kohe.'}</span></div></div>
   {data.revision?.status==='rejected'&&<p className="profile-feedback"><strong>Muudatused lükati tagasi:</strong> {data.revision.note}</p>}
@@ -80,7 +196,20 @@ export function CompanyProfileForm({initial}:{initial:OwnProfile}){
    </fieldset>
    <fieldset disabled={publicLocked||busy} className="profile-edit-card"><legend>Asukoht ja avalikud kontaktid</legend><p>Need andmed kuvatakse sinu avalikul profiilil.</p><div className="profile-fields">{([['municipality','Omavalitsus'],['settlement','Asula'],['address','Aadress'],['website','Koduleht'],['email','E-post'],['phone','Telefon']] as const).map(([key,label])=><Field key={key} label={label} id={attributes(key).id} error={errors[`publicProfile.${key}`]}><input {...attributes(key)} value={values[key]} type={key==='email'?'email':key==='website'?'url':key==='phone'?'tel':'text'} onChange={e=>update(key,e.target.value)} placeholder={key==='website'?'https://ettevote.ee':undefined} maxLength={key==='website'?500:key==='email'?254:key==='phone'?30:200}/></Field>)}</div></fieldset>
    <fieldset disabled={busy} className="profile-edit-card"><legend>Kontaktisik <span className="profile-private"><LockKeyhole size={12} aria-hidden="true"/>Ainult haldurile</span></legend><p>Kontaktisiku andmeid avalikul profiilil ei kuvata.</p><div className="profile-fields">{([['name','Nimi'],['role','Roll / amet'],['email','E-post'],['phone','Telefon']] as const).map(([key,label])=><Field key={key} label={label} id={contactAttributes(key).id} error={errors[`contact.${key}`]}><input {...contactAttributes(key)} type={key==='email'?'email':key==='phone'?'tel':'text'} value={contact[key]} onChange={e=>{setContact(old=>({...old,[key]:e.target.value}));setMessage('');}} maxLength={key==='email'?254:key==='phone'?30:100} required={key==='name'||key==='email'}/></Field>)}</div></fieldset>
-  </div><aside className="profile-edit-aside"><section className="profile-edit-card"><h2>Profiili eelvaade</h2><p>Nii näevad külastajad sinu ettevõtet pärast kinnitamist.</p><div className="profile-live-card"><img src={values.image||data.company.image} alt="Ettevõtte praegune kaanepilt" width={600} height={250}/><div className="profile-live-content"><span className="profile-monogram">{values.logo?<img src={values.logo} alt={`${displayName} logo`} style={{width:56,height:56,objectFit:'contain'}}/>:displayName.slice(0,2).toLocaleUpperCase('et')}</span><h3>{displayName}</h3><span className="badge">{values.category}</span><p><MapPin size={14} aria-hidden="true"/>{values.municipality}</p><p>{values.tagline}</p>{values.brandName&&<small>Ettevõte: {values.name}</small>}</div></div><fieldset className="profile-upload-options" disabled={busy||publicLocked}><legend>Pildid</legend>{(['image','logo'] as const).map(kind=><div key={kind}><label htmlFor={`${prefix}-${kind}`}><ImagePlus size={16}/>{kind==='image'?'Muuda kaanepilti':'Muuda logo'}</label><input id={`${prefix}-${kind}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void upload(kind,event.target.files?.[0]);event.target.value='';}}/></div>)}{values.logo&&<button type="button" className="text-link" onClick={()=>update('logo','')}>Eemalda logo</button>}</fieldset><small className="muted">{uploading?'Laadin pilti üles…':'JPG, PNG või WebP, kuni 5 MB. Logo soovituslikult ruudukujuline, kaanepilt horisontaalne. Pärast üleslaadimist salvesta muudatused.'}</small></section><section className="profile-edit-card"><h2>Profiili täitmine</h2><p>Hea tutvustus aitab õigete inimesteni jõuda.</p><progress max={100} value={completion} aria-label="Profiili täitmine"/><strong>{completion}%</strong><ul className="profile-checks">{[[Boolean(values.name),'Põhiandmed lisatud'],[Boolean(values.email),'Kontaktid olemas'],[Boolean(values.description),'Tutvustus lisatud'],[Boolean(values.logo),'Ettevõtte logo lisatud']].map(([done,label])=><li key={String(label)}>{done?<Check size={17} aria-hidden="true"/>:<span className="profile-unchecked"/>}{label}</li>)}</ul></section></aside></div>
-  <div className="profile-savebar"><span>{dirty?'Muudatused pole veel salvestatud':data.revision?.status==='pending'?'Avalikud muudatused ootavad kinnitamist':'Kõik muudatused on salvestatud'}</span><div><button type="button" className="button secondary" disabled={!dirty||busy} onClick={discard}>Loobu muudatustest</button><button type="submit" className="button" disabled={!dirty||busy}>{busy?'Salvestan…':'Salvesta muudatused'}<ArrowRight size={16} aria-hidden="true"/></button></div></div>
+  </div><aside className="profile-edit-aside"><section className="profile-edit-card"><h2>Profiili eelvaade</h2><p>Nii näevad külastajad sinu ettevõtet pärast kinnitamist.</p><div className="profile-live-card">{coverImage ? <img src={coverImage} alt="Ettevõtte kaanepildi eelvaade" width={600} height={250} /> : <div className="profile-live-cover-empty" aria-hidden="true" />}<div className="profile-live-content"><span className="profile-monogram">{values.logo?<img src={values.logo} alt={`${displayName} logo`} style={{width:56,height:56,objectFit:'contain'}}/>:displayName.slice(0,2).toLocaleUpperCase('et')}</span><h3>{displayName}</h3><span className="badge">{values.category}</span><p><MapPin size={14} aria-hidden="true"/>{values.municipality}</p><p>{values.tagline}</p>{values.brandName&&<small>Ettevõte: {values.name}</small>}</div></div></section>
+   <ProfileMediaFields
+    image={coverImage}
+    logo={values.logo ?? ''}
+    disabled={busy || publicLocked}
+    uploading={uploading}
+    error={uploadError}
+    onUpload={upload}
+    onRemoveLogo={() => {
+     setUploadError('');
+     update('logo', '');
+    }}
+   />
+   <section className="profile-edit-card"><h2>Profiili täitmine</h2><p>Hea tutvustus aitab õigete inimesteni jõuda.</p><progress max={100} value={completion} aria-label="Profiili täitmine"/><strong>{completion}%</strong><ul className="profile-checks">{[[Boolean(values.name),'Põhiandmed lisatud'],[Boolean(values.email),'Kontaktid olemas'],[Boolean(values.description),'Tutvustus lisatud'],[Boolean(values.logo),'Ettevõtte logo lisatud']].map(([done,label])=><li key={String(label)}>{done?<Check size={17} aria-hidden="true"/>:<span className="profile-unchecked"/>}{label}</li>)}</ul></section></aside></div>
+  <div className="profile-savebar"><span>{dirty?'Muudatused pole veel salvestatud':data.revision?.status==='pending'?'Avalikud muudatused ootavad kinnitamist':'Kõik muudatused on salvestatud'}</span><div><button type="button" className="button secondary" disabled={!dirty||busy} onClick={discard}>Loobu muudatustest</button><button type="submit" className="button" disabled={!dirty||busy}>{busy && !uploading ? 'Salvestan…' : 'Salvesta muudatused'}<ArrowRight size={16} aria-hidden="true"/></button></div></div>
  </form>;
 }
