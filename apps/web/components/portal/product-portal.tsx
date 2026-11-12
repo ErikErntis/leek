@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowRight, CircleHelp, PackagePlus, Store, Upload } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, ChevronDown, CircleHelp, PackagePlus, Store, Upload } from 'lucide-react';
 import {
  formatServicePrice, productAvailability, productCategories, type CompanyProduct, type ProductContent, type ProductSave,
  type ProductShop, type ShopConnectionInput, type ShopPlatform, type StoreProductPage,
@@ -86,12 +86,14 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  }
  function switchMode(next: typeof mode) {
   setMode(next);
+  setSelected(null);
   clearWixCredentials();
   setError('');
   setMessage('');
  }
  function edit(item?: CompanyProduct) {
-  switchMode('manual');
+  switchMode(item ? 'list' : 'manual');
+  if (item && selected?.id === item.id) return;
   setSelected(item ? { id: item.id, version: item.version } : { id: crypto.randomUUID(), version: null });
   setContent(item?.content ?? blank);
   setPrice(displayPrice(item?.content.priceCents ?? null));
@@ -137,7 +139,9 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
     };
    }
    const item = await post<CompanyProduct>(body);
-   setItems(old => [item, ...old.filter(entry => entry.id !== item.id)]);
+   setItems(old => old.some(entry => entry.id === item.id)
+    ? old.map(entry => entry.id === item.id ? item : entry)
+    : [item, ...old]);
    setSelected({ id: item.id, version: item.version });
    if (changes) setContent(item.content);
    setMessage({ draft: 'Mustand salvestatud.', publish: 'Toode on avalik.', submit: 'Toode on avalik.', hide: 'Toode peidetud.', show: 'Toode jälle avalik.' }[action]);
@@ -153,6 +157,10 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
    const { items: published } = await post<{ items: CompanyProduct[] }>({ action: 'publish-imported', ids });
    const updates = new Map(published.map(item => [item.id, item]));
    setItems(old => old.map(item => updates.get(item.id) ?? item));
+   setSelected(old => {
+    const updated = old && updates.get(old.id);
+    return updated ? { id: updated.id, version: updated.version } : old;
+   });
    setMessage(published.length ? `Avaldatud tooteid: ${published.length}.` : 'Avaldatavaid mustandeid ei leitud. Värskenda lehte.');
   });
  }
@@ -176,37 +184,11 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
   });
  }
 
- const title = { list: 'Minu tooted', manual: selected?.version === null ? 'Lisa toode' : 'Muuda toodet', store: 'Ühenda oma e-pood', help: 'Vajan ühendamisel abi' }[mode];
- return <>
-  <div className="workspace-heading"><h1>{title}</h1>
-   {mode !== 'list' && <button type="button" className="button secondary" disabled={busy} onClick={() => switchMode('list')}>Tagasi toodete juurde</button>}
-  </div>
+ const feedback = <>
   {message && <p className="profile-success" role="status">{message}</p>}
   {error && <p className="profile-feedback" role="alert">{error}</p>}
-  {mode === 'list' && <>
-   <div className="product-entry-grid">
-    <Entry icon={<PackagePlus />} title="Lisa toode käsitsi" onClick={() => edit()}>Lisa toote andmed ja pildid. Soovi korral lisa e-poe link.</Entry>
-    <Entry icon={<Store />} title="Ühenda oma e-pood" onClick={openStore}>Vali Shopify, WooCommerce või Wix Stores ja impordi sobivad tooted.</Entry>
-    <Entry icon={<CircleHelp />} title="Vajan ühendamisel abi" onClick={() => {
-     setHelpId(crypto.randomUUID());
-     setHelpSent(false);
-     switchMode('help');
-    }}>Tasuline seadistusabi. Küsi pakkumist.</Entry>
-   </div>
-   <section className="panel product-section">
-    <h2>Minu tooted</h2>
-    {canPublish && unpublishedImports.length > 0 && <button type="button" className="button" disabled={busy} onClick={publishImported}>
-     Avalda imporditud mustandid ({unpublishedImports.length})
-    </button>}
-    {items.length ? <ul className="service-owner-list">{items.map(item => <li key={item.id}>
-     <button type="button" className="text-link" disabled={busy} onClick={() => edit(item)}>{item.content.title || 'Nimeta toode'}</button>
-     <span className="muted">{item.status === 'approved' && !item.visible ? 'Peidetud' : statuses[item.status]}
-     {item.published && item.status !== 'approved' && (item.visible ? ' · Avalik versioon' : ' · Peidetud')}{item.shopId && ' · E-poest'}</span>
-     {item.published && item.visible && <a className="text-link" href={`/tooted/${item.id}`}>Vaata avalikku toodet</a>}
-    </li>)}</ul> : <p>Lisa esimene toode.</p>}
-   </section>
-  </>}
-  {mode === 'manual' && selected && <form onSubmit={submit} aria-busy={busy}>
+ </>;
+ const editor = selected && <form onSubmit={submit} aria-busy={busy}>
    <p className="muted">{statuses[current?.status ?? 'draft']}{current?.note && ` · Halduri märkus: ${current.note}`}</p>
    <div className="service-editor-grid">
     <div className="service-editor-main">
@@ -257,7 +239,60 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
     <button type="submit" className="button" disabled={busy || !canPublish}>{current?.published && current.visible ? 'Avalda muudatused' : 'Avalda toode'}</button>
    </div>
    {company.status !== 'published' && <p className="muted">Toote saad avaldada pärast ettevõtte kinnitamist.</p>}
-  </form>}
+  </form>;
+
+ const title = { list: 'Minu tooted', manual: selected?.version === null ? 'Lisa toode' : 'Muuda toodet', store: 'Ühenda oma e-pood', help: 'Vajan ühendamisel abi' }[mode];
+ return <>
+  <div className="workspace-heading"><h1>{title}</h1>
+   {mode !== 'list' && <button type="button" className="button secondary" disabled={busy} onClick={() => switchMode('list')}>Tagasi toodete juurde</button>}
+  </div>
+  {(mode !== 'list' || !current) && feedback}
+  {mode === 'list' && <>
+   <div className="product-entry-grid">
+    <Entry icon={<PackagePlus />} title="Lisa toode käsitsi" disabled={busy} onClick={() => edit()}>Lisa toote andmed ja pildid. Soovi korral lisa e-poe link.</Entry>
+    <Entry icon={<Store />} title="Ühenda oma e-pood" disabled={busy} onClick={openStore}>Vali Shopify, WooCommerce või Wix Stores ja impordi sobivad tooted.</Entry>
+    <Entry icon={<CircleHelp />} title="Vajan ühendamisel abi" disabled={busy} onClick={() => {
+     setHelpId(crypto.randomUUID());
+     setHelpSent(false);
+     switchMode('help');
+    }}>Tasuline seadistusabi. Küsi pakkumist.</Entry>
+   </div>
+   <section className="panel product-section">
+    <h2>Minu tooted</h2>
+    {canPublish && unpublishedImports.length > 0 && <button type="button" className="button" disabled={busy} onClick={publishImported}>
+     Avalda imporditud mustandid ({unpublishedImports.length})
+    </button>}
+    {items.length ? <ul className="product-accordion">{items.map(item => {
+     const open = selected?.id === item.id;
+     const buttonId = `product-toggle-${item.id}`;
+     const panelId = `product-panel-${item.id}`;
+     return <li key={item.id}>
+      <h3 className="product-accordion-heading">
+       <button type="button" id={buttonId} className="product-accordion-toggle" aria-expanded={open}
+        aria-controls={panelId} disabled={busy} onClick={() => edit(item)}>
+        <span className="product-accordion-name">{item.content.title || 'Nimeta toode'}</span>
+        <span className="product-accordion-meta">
+         {item.status === 'approved' && !item.visible ? 'Peidetud' : statuses[item.status]}
+         {item.published && item.status !== 'approved' && (item.visible ? ' · Avalik versioon' : ' · Peidetud')}
+         {item.shopId && ' · E-poest'}
+        </span>
+        <ChevronDown className="product-accordion-icon" size={18} aria-hidden="true" />
+       </button>
+      </h3>
+      <div id={panelId} role="region" aria-labelledby={buttonId} className="product-accordion-panel" hidden={!open}>
+       {open && <>
+        {feedback}
+        {item.published && item.visible && <a className="product-accordion-public text-link" href={`/tooted/${item.id}`}>
+         Vaata avalikku toodet <ArrowUpRight size={15} aria-hidden="true" />
+        </a>}
+        {editor}
+       </>}
+      </div>
+     </li>;
+    })}</ul> : <p>Lisa esimene toode.</p>}
+   </section>
+  </>}
+  {mode === 'manual' && editor}
   {mode === 'store' && <>
    <form className="panel service-fields" aria-busy={busy} onSubmit={event => { event.preventDefault(); void loadStore(connection, null); }}>
     {shops.length > 0 && <label>Ühendatud poed<select value={savedConnection?.id ?? ''} onChange={event => {
@@ -332,8 +367,8 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  </>;
 }
 
-function Entry({ icon, title, children, onClick }: { icon: ReactNode; title: string; children: ReactNode; onClick: () => void }) {
- return <button type="button" className="panel product-entry" onClick={onClick}>
+function Entry({ icon, title, children, disabled, onClick }: { icon: ReactNode; title: string; children: ReactNode; disabled: boolean; onClick: () => void }) {
+ return <button type="button" className="panel product-entry" disabled={disabled} onClick={onClick}>
   <span className="product-entry-icon" aria-hidden="true">{icon}</span>
   <strong>{title}</strong><span>{children}</span><ArrowRight size={16} aria-hidden="true" />
  </button>;
