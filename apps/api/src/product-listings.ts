@@ -4,6 +4,7 @@ import { localProductPhoto, productCategories, type CompanyProduct, type Product
 import { companies, companyMedia, memberships, productHelpRequests, productListings, productShops, type createDatabase } from '@leek/db';
 import { CompanyError } from './company-service';
 import { normalizeShop, storeCatalog } from './store-catalog';
+import { decryptWixKey, encryptWixKey } from './wix-credentials';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 type ProductRow = typeof productListings.$inferSelect;
@@ -13,6 +14,12 @@ const syncInterval = 15 * 60 * 1000;
 function companyProduct(row: ProductRow): CompanyProduct {
  const { id, version, content, published, status, note, visible, shopId, sourceId } = row;
  return { id, version, content, published, status, note, visible, shopId, sourceId };
+}
+function catalogConnection(shop: typeof productShops.$inferSelect): ShopConnectionInput {
+ const { platform, url, wixSiteId, wixApiKey } = shop;
+ if (platform !== 'wix') return { platform, url };
+ if (!wixSiteId || !wixApiKey) throw new CompanyError(400, 'Lisa Wixi saidi ID ja API võti.');
+ return { platform, url, wix: { siteId: wixSiteId, apiKey: decryptWixKey(wixApiKey, { companyId: shop.companyId, url, wixSiteId }) } };
 }
 function syncedData(item: StoreProduct): SyncedProduct {
  return { url: item.url, priceCents: item.priceCents, availability: item.availability, fromPrice: item.fromPrice };
@@ -107,12 +114,29 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
   async catalog(userId: string, companyId: string, input: ShopConnectionInput, cursor: string | null) {
    await ownerCompany(userId, companyId);
    const connection = normalizeShop(input);
-   const page = await catalog.page(connection, cursor);
-   const [shop] = await db.insert(productShops).values({ ...connection, companyId }).onConflictDoUpdate({
-    target: [productShops.companyId, productShops.platform, productShops.url], set: { url: connection.url },
-   }).returning({ id: productShops.id, platform: productShops.platform, url: productShops.url });
-   const imported = await db.select({ sourceId: productListings.sourceId }).from(productListings).where(eq(productListings.shopId, shop!.id));
-   return { ...page, shop: shop!, imported: imported.map(item => item.sourceId) };
+   const { url, platform } = connection;
+   const [existing] = await db.select().from(productShops).where(and(
+    eq(productShops.companyId, companyId), eq(productShops.platform, platform), eq(productShops.url, url),
+   ));
+   const wixSiteId = input.wix?.siteId.toLowerCase();
+   if (wixSiteId && existing?.wixSiteId && existing.wixSiteId !== wixSiteId) {
+    throw new CompanyError(409, 'See aadress on ühendatud teise Wixi saidiga.');
+   }
+   const wix = input.wix && wixSiteId ? { siteId: wixSiteId, apiKey: input.wix.apiKey } : undefined;
+   const encrypted = wix ? encryptWixKey(wix.apiKey, { companyId, url, wixSiteId: wix.siteId }) : undefined;
+   const resolved = wix ? { ...connection, wix } : existing ? catalogConnection(existing) : connection;
+   const page = await catalog.page(resolved, cursor);
+   const [saved] = !existing || wix ? await db.insert(productShops).values({
+    platform, url, companyId, wixSiteId, wixApiKey: encrypted,
+   }).onConflictDoUpdate({
+    target: [productShops.companyId, productShops.platform, productShops.url],
+    set: { url, ...(wix ? { wixSiteId: wix.siteId, wixApiKey: encrypted } : {}) },
+    ...(wix ? { setWhere: or(isNull(productShops.wixSiteId), eq(productShops.wixSiteId, wix.siteId)) } : {}),
+   }).returning({ id: productShops.id, platform: productShops.platform, url: productShops.url }) : [existing];
+   if (!saved) throw new CompanyError(409, 'See aadress on ühendatud teise Wixi saidiga.');
+   const shop = { id: saved.id, platform: saved.platform, url: saved.url };
+   const imported = await db.select({ sourceId: productListings.sourceId }).from(productListings).where(eq(productListings.shopId, shop.id));
+   return { ...page, shop, imported: imported.map(item => item.sourceId) };
   },
 
   async import(userId: string, companyId: string, shopId: string, cursor: string | null, sourceIds: string[]) {
@@ -120,7 +144,7 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    const [shop] = await db.select().from(productShops).where(and(eq(productShops.companyId, companyId), eq(productShops.id, shopId)));
    if (!shop) throw new CompanyError(404, 'E-poodi ei leitud.');
    const requested = new Set(sourceIds);
-   const { items } = await catalog.page(shop, cursor);
+   const { items } = await catalog.page(catalogConnection(shop), cursor);
    const selected = items.filter(item => requested.has(item.sourceId));
    if (new Set(selected.map(item => item.sourceId)).size !== requested.size) throw new CompanyError(409, 'E-poe tootevalik on muutunud. Laadi leht uuesti.');
    const now = new Date();
@@ -200,7 +224,7 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
      .where(and(eq(productListings.id, row.id), active)).returning({ id: productListings.id });
     if (!claimed || !row.sourceId) return;
     try {
-     const item = await catalog.get(row.shop, row.sourceId);
+     const item = await catalog.get(catalogConnection(row.shop), row.sourceId);
      await db.update(productListings).set({ storeData: item ? syncedData(item) : null, syncedAt: new Date() })
       .where(and(eq(productListings.id, row.id), eq(productListings.attemptedAt, now)));
     } catch {

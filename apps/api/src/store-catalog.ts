@@ -1,7 +1,7 @@
 import { Resolver } from 'node:dns/promises';
 import { request } from 'node:https';
 import { BlockList } from 'node:net';
-import { publicHttpsUrl, type ShopConnectionInput, type StoreProduct, type StoreProductPage } from '@leek/contracts';
+import { publicHttpsUrl, type ShopConnectionInput, type StoreProduct, type StoreProductPage, type WixCredentials } from '@leek/contracts';
 import { CompanyError } from './company-service';
 
 const unavailable = 'E-poe kataloogi ei saanud laadida. Kontrolli aadressi ja poe avalikku ligipääsu.';
@@ -29,7 +29,7 @@ export function normalizeShop(input: ShopConnectionInput): ShopConnectionInput {
 }
 
 let activeRequests = 0;
-async function readJson(url: URL, body?: string) {
+async function readJson(url: URL, body?: string, headers: Record<string, string> = {}) {
  if (activeRequests >= 12) throw new CompanyError(429, 'Poe ühendamine on hetkel hõivatud. Proovi uuesti.');
  activeRequests++;
  try {
@@ -42,7 +42,7 @@ async function readJson(url: URL, body?: string) {
     method: body ? 'POST' : 'GET', agent: false, family: 4,
     signal: AbortSignal.timeout(timeout),
     lookup: (_hostname, _options, callback) => callback(null, address, 4),
-    headers: { accept: 'application/json', 'user-agent': 'LEEK product catalog', ...(body ? { 'content-type': 'application/json' } : {}) },
+    headers: { accept: 'application/json', 'user-agent': 'LEEK product catalog', ...(body ? { 'content-type': 'application/json' } : {}), ...headers },
    }, response => {
     const status = response.statusCode ?? 500;
     if (status === 404 || status === 410) {
@@ -142,9 +142,114 @@ function wooEndpoint(shop: ShopConnectionInput) {
  return new URL(`${shop.url}/wp-json/wc/store/v1/products`);
 }
 
+const wixHost = 'https://www.wixapis.com';
+const wixFields = ['URL', 'CURRENCY', 'PLAIN_DESCRIPTION', 'MEDIA_ITEMS_INFO'];
+const wixUuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+function wixLink(value: unknown, shopUrl: string) {
+ const link = record(value);
+ const full = publicHttpsUrl(string(value) || string(link.url));
+ if (full) return full;
+ const base = publicHttpsUrl(string(link.base)) || shopUrl;
+ const path = string(link.path) || string(link.relativePath);
+ if (!path.startsWith('/') || path.startsWith('//')) return '';
+ return publicHttpsUrl(base.replace(/\/$/, '') + path);
+}
+
+function wixImage(value: unknown) {
+ const image = record(value);
+ const url = string(image.url) || string(value);
+ const wixUri = /^wix:image:\/\/v1\/([a-z0-9_.~-]+)(?:[\/#]|$)/i.exec(url);
+ return wixUri ? 'https://static.wixstatic.com/media/' + wixUri[1] : publicHttpsUrl(url);
+}
+
+function wixProduct(value: unknown, shopUrl: string, modern: boolean): StoreProduct | null {
+ const item = record(value);
+ const sourceId = string(item.id);
+ const title = text(item.name, 120);
+ const url = wixLink(modern ? item.url : item.productPageUrl, shopUrl);
+ if (!wixUuid.test(sourceId) || !title || !url || item.visible !== true) return null;
+ const media = record(item.media);
+ const mediaItems = modern ? list(record(media.itemsInfo).items) : list(media.items);
+ const images = [modern ? media.main : media.mainMedia, ...mediaItems].map(value => {
+  const entry = record(value);
+  return wixImage(entry.image || record(entry.media).image || (entry.mediaType === 'IMAGE' ? entry.url : undefined));
+ }).filter(Boolean);
+ const inventory = record(modern ? item.inventory : item.stock);
+ const status = modern ? inventory.availabilityStatus : inventory.inventoryStatus;
+ const available = status === 'IN_STOCK' || status === 'PARTIALLY_OUT_OF_STOCK' || (!modern && inventory.inStock === true && status !== 'PREORDER');
+ const preorder = status === 'PREORDER' || ['ALL_VARIANTS', 'SOME_VARIANTS'].includes(string(inventory.preorderAvailability));
+ const range = record(item.actualPriceRange);
+ const legacy = record(item.priceData || item.price);
+ const currency = modern ? item.currency : legacy.currency;
+ const minimum = modern ? record(range.minValue).amount : legacy.discountedPrice ?? legacy.price;
+ const maximum = modern ? record(range.maxValue).amount : undefined;
+ const priceCents = euros(typeof minimum === 'number' ? String(minimum) : minimum, currency, 0);
+ const max = euros(maximum, currency, 0);
+ return {
+  sourceId, title, url, description: text(modern ? item.plainDescription : item.description, 2000),
+  photos: [...new Set(images)].slice(0, 5), priceCents, fromPrice: priceCents !== null && max !== null && max > priceCents,
+  availability: available ? 'in_stock' : preorder ? 'on_order' : 'sold_out',
+ };
+}
+
+async function wixRead(read: typeof readJson, credentials: WixCredentials, path: string, body?: object) {
+ try {
+  return await read(new URL(path, wixHost), body ? JSON.stringify(body) : undefined, {
+   authorization: credentials.apiKey, 'wix-site-id': credentials.siteId,
+  });
+ } catch (error) {
+  if (error instanceof CompanyError && error.status === 429) throw error;
+  throw new CompanyError(400, 'Wixi kataloogi ei saanud laadida. Kontrolli saidi ID-d, API võtit ja lugemisõigusi.');
+ }
+}
+
+async function wixVersion(read: typeof readJson, credentials: WixCredentials | undefined) {
+ if (!credentials) throw new CompanyError(400, 'Lisa Wixi saidi ID ja API võti.');
+ const { json } = await wixRead(read, credentials, '/stores/v3/provision/version');
+ const version = record(json).catalogVersion;
+ if (version !== 'V3_CATALOG' && version !== 'V1_CATALOG') {
+  throw new CompanyError(400, 'Saidil peab olema Wix Storesi kataloog.');
+ }
+ return { modern: version === 'V3_CATALOG', credentials };
+}
+
+async function wixPage(read: typeof readJson, shop: ShopConnectionInput, cursor: string | null): Promise<StoreProductPage> {
+ const { modern, credentials } = await wixVersion(read, shop.wix);
+ const filter = { visible: { $eq: true } };
+ if (!modern && cursor !== null && !/^[1-9][0-9]{0,5}$/.test(cursor)) throw new CompanyError(400, 'Vigane kataloogileht.');
+ const offset = modern ? 0 : Number(cursor ?? 0);
+ const path = modern ? '/stores/v3/products/query' : '/stores-reader/v1/products/query';
+ const { json } = await wixRead(read, credentials, path, modern
+  ? { query: { filter, cursorPaging: { limit: pageSize, ...(cursor ? { cursor } : {}) } }, fields: wixFields }
+  : { query: { filter: JSON.stringify(filter), paging: { limit: pageSize, offset } } });
+ const data = record(json);
+ if (!Array.isArray(data.products)) throw new CompanyError(400, 'Wix ei tagastanud toodete kataloogi.');
+ const nextCursor = string(record(record(data.pagingMetadata).cursors).next);
+ const nextOffset = offset + data.products.length;
+ const hasMore = typeof data.totalResults === 'number' ? nextOffset < data.totalResults : data.products.length === pageSize;
+ return {
+  items: data.products.map(item => wixProduct(item, shop.url, modern)).filter(item => item !== null),
+  next: modern ? nextCursor || null : hasMore && nextOffset > offset && nextOffset < 1_000_000 ? String(nextOffset) : null,
+ };
+}
+
+async function wixGet(read: typeof readJson, shop: ShopConnectionInput, sourceId: string) {
+ if (!wixUuid.test(sourceId)) return null;
+ const { modern, credentials } = await wixVersion(read, shop.wix);
+ const endpoint = modern ? '/stores/v3/products/' : '/stores-reader/v1/products/';
+ const fields = modern ? '?' + new URLSearchParams(wixFields.map(field => ['fields', field])) : '';
+ const { status, json } = await wixRead(read, credentials, endpoint + sourceId + fields);
+ if (status === 404 || status === 410) return null;
+ const product = record(json).product;
+ if (!product) throw new CompanyError(400, 'Wix ei tagastanud toodet.');
+ return wixProduct(product, shop.url, modern);
+}
+
 export function createStoreCatalog(read = readJson) {
  return {
  async page(shop: ShopConnectionInput, cursor: string | null): Promise<StoreProductPage> {
+  if (shop.platform === 'wix') return wixPage(read, shop, cursor);
   if (shop.platform === 'shopify') {
    const data = await graphql(read, shop, `query($cursor: String) @inContext(country: EE) { products(first: ${pageSize}, after: $cursor) { nodes { ${shopifyFields} } pageInfo { hasNextPage endCursor } } }`, { cursor });
    const collection = record(data.products);
@@ -161,6 +266,7 @@ export function createStoreCatalog(read = readJson) {
   return { items: json.map(wooProduct).filter(item => item !== null), next: (totalPages ? page < totalPages : json.length === pageSize) && page < 99999 ? String(page + 1) : null };
  },
  async get(shop: ShopConnectionInput, sourceId: string): Promise<StoreProduct | null> {
+  if (shop.platform === 'wix') return wixGet(read, shop, sourceId);
   if (shop.platform === 'shopify') {
    const data = await graphql(read, shop, `query($id: ID!) @inContext(country: EE) { product(id: $id) { ${shopifyFields} } }`, { id: sourceId });
    return shopifyProduct(data.product);

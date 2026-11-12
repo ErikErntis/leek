@@ -9,7 +9,7 @@ import {
 import type { PortalCompany } from '../../lib/portal';
 
 const statuses = { draft: 'Mustand', pending: 'Ülevaatamisel', approved: 'Kinnitatud', rejected: 'Tagasi lükatud' };
-const shopNames = { shopify: 'Shopify', woocommerce: 'WooCommerce' };
+const shopNames = { shopify: 'Shopify', woocommerce: 'WooCommerce', wix: 'Wix Stores' };
 const blank: ProductContent = { title: '', description: '', category: productCategories[0], photos: [], availability: 'in_stock', priceCents: null, shopUrl: '', variants: [] };
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp'];
 type Variant = Omit<ProductContent['variants'][number], 'priceCents'> & { price: string };
@@ -39,6 +39,8 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  const [price, setPrice] = useState('');
  const [variants, setVariants] = useState<Variant[]>([]);
  const [connection, setConnection] = useState<ShopConnectionInput>({ platform: 'shopify', url: '' });
+ const [wixSiteId, setWixSiteId] = useState('');
+ const [wixApiKey, setWixApiKey] = useState('');
  const [catalog, setCatalog] = useState<Catalog | null>(null);
  const [checked, setChecked] = useState<string[]>([]);
  const [helpId, setHelpId] = useState('');
@@ -53,6 +55,14 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  const linked = Boolean(current?.shopId);
  const locked = current?.status === 'pending';
  const route = `/api/portal/company/${company.id}`;
+
+ const savedConnection = shops.find(shop => shop.url === connection.url && shop.platform === connection.platform);
+ const needsWixCredentials = connection.platform === 'wix' && (!savedConnection || Boolean(wixSiteId || wixApiKey));
+
+ function clearWixCredentials() {
+  setWixSiteId('');
+  setWixApiKey('');
+ }
 
  async function post<T>(body: unknown): Promise<T> {
   const response = await fetch(`${route}/products`, {
@@ -74,6 +84,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  }
  function switchMode(next: typeof mode) {
   setMode(next);
+  clearWixCredentials();
   setError('');
   setMessage('');
  }
@@ -100,7 +111,12 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  function loadStore(input: ShopConnectionInput, cursor: string | null) {
   return run(async () => {
    const { platform, url } = input;
-   const result = await post<Omit<Catalog, 'cursor'>>({ action: 'catalog', connection: { platform, url }, cursor });
+   const wix = platform === 'wix' && (wixSiteId.trim() || wixApiKey.trim())
+    ? { siteId: wixSiteId.trim(), apiKey: wixApiKey.trim() }
+    : undefined;
+   if (wix && (!wix.siteId || !wix.apiKey)) throw new Error('Sisesta nii Wixi saidi ID kui ka API võti.');
+   const result = await post<Omit<Catalog, 'cursor'>>({ action: 'catalog', connection: { platform, url, ...(wix ? { wix } : {}) }, cursor });
+   clearWixCredentials();
    setConnection({ platform: result.shop.platform, url: result.shop.url });
    setShops(old => old.some(shop => shop.id === result.shop.id) ? old : [...old, result.shop]);
    setCatalog({ ...result, cursor });
@@ -159,7 +175,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
   {mode === 'list' && <>
    <div className="product-entry-grid">
     <Entry icon={<PackagePlus />} title="Lisa toode käsitsi" onClick={() => edit()}>Lisa toote andmed ja pildid. Soovi korral lisa e-poe link.</Entry>
-    <Entry icon={<Store />} title="Ühenda oma e-pood" onClick={openStore}>Vali Shopify või WooCommerce ja impordi sobivad tooted.</Entry>
+    <Entry icon={<Store />} title="Ühenda oma e-pood" onClick={openStore}>Vali Shopify, WooCommerce või Wix Stores ja impordi sobivad tooted.</Entry>
     <Entry icon={<CircleHelp />} title="Vajan ühendamisel abi" onClick={() => {
      setHelpId(crypto.randomUUID());
      setHelpSent(false);
@@ -229,21 +245,33 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
   </form>}
   {mode === 'store' && <>
    <form className="panel service-fields" aria-busy={busy} onSubmit={event => { event.preventDefault(); void loadStore(connection, null); }}>
-    {shops.length > 0 && <label>Ühendatud poed<select value={shops.find(shop => shop.url === connection.url && shop.platform === connection.platform)?.id ?? ''} onChange={event => {
+    {shops.length > 0 && <label>Ühendatud poed<select value={savedConnection?.id ?? ''} onChange={event => {
      const shop = shops.find(item => item.id === event.target.value);
      setConnection(shop ? { url: shop.url, platform: shop.platform } : { url: '', platform: 'shopify' });
      setCatalog(null);
+     clearWixCredentials();
      setChecked([]);
     }} disabled={busy}><option value="">Lisa uus pood</option>{shops.map(shop => <option value={shop.id} key={shop.id}>{shopNames[shop.platform]} · {shop.url}</option>)}</select></label>}
     <label>Platvorm<select value={connection.platform} disabled={busy} onChange={event => {
      setConnection(old => ({ ...old, platform: event.target.value as ShopPlatform }));
+     clearWixCredentials();
      setCatalog(null);
-    }}><option value="shopify">Shopify</option><option value="woocommerce">WooCommerce</option></select></label>
-    <label>Poe aadress<input required value={connection.url} maxLength={500} disabled={busy} placeholder={connection.platform === 'shopify' ? 'sinupood.myshopify.com' : 'https://sinupood.ee'} onChange={event => {
+    }}><option value="shopify">Shopify</option><option value="woocommerce">WooCommerce</option><option value="wix">Wix Stores</option></select></label>
+    <label>Poe aadress<input required value={connection.url} maxLength={500} disabled={busy} placeholder={connection.platform === 'shopify' ? 'sinupood.myshopify.com' : connection.platform === 'wix' ? 'https://sinupood.wixsite.com/pood' : 'https://sinupood.ee'} onChange={event => {
      setConnection(old => ({ ...old, url: event.target.value }));
+     clearWixCredentials();
      setCatalog(null);
     }} /></label>
-    <small>{connection.platform === 'shopify' ? 'Sisesta poe myshopify.com aadress. Tooted peavad olema avalikus veebipoes.' : 'Sisesta WooCommerce’i poe avalehe aadress.'}</small>
+    <small>{connection.platform === 'shopify' ? 'Sisesta poe myshopify.com aadress. Tooted peavad olema avalikus veebipoes.'
+     : connection.platform === 'woocommerce' ? 'Sisesta WooCommerce’i poe avalehe aadress.'
+     : 'Sisesta avaliku Wix Storesi poe aadress. API võti peab saama lugeda toodete andmeid ja kataloogi versiooni.'}</small>
+    {connection.platform === 'wix' && <>
+     {savedConnection && <small>Uue võtme salvestamiseks sisesta sama saidi ID ja uus võti. Poe laadimiseks võid väljad tühjaks jätta.</small>}
+     <label>Wixi saidi ID<input value={wixSiteId} onChange={event => setWixSiteId(event.target.value)}
+      autoComplete="off" spellCheck={false} maxLength={36} disabled={busy} required={needsWixCredentials} /></label>
+     <label>Wixi API võti<input type="password" value={wixApiKey} onChange={event => setWixApiKey(event.target.value)}
+      autoComplete="new-password" maxLength={4096} disabled={busy} required={needsWixCredentials} /></label>
+    </>}
     <button type="submit" className="button" disabled={busy}>{busy ? 'Palun oota…' : 'Laadi tooted'}</button>
    </form>
    {catalog && <section className="panel product-section">

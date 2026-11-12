@@ -48,8 +48,12 @@ CREATE INDEX IF NOT EXISTS service_listings_company_idx ON service_listings(comp
 CREATE INDEX IF NOT EXISTS service_listings_status_idx ON service_listings(status,updated_at);
 CREATE TABLE IF NOT EXISTS product_shops (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
- platform text NOT NULL CHECK(platform IN ('shopify','woocommerce')), url text NOT NULL
+ platform text NOT NULL, url text NOT NULL
 );
+ALTER TABLE product_shops ADD COLUMN IF NOT EXISTS wix_site_id uuid;
+ALTER TABLE product_shops ADD COLUMN IF NOT EXISTS wix_api_key text;
+ALTER TABLE product_shops DROP CONSTRAINT IF EXISTS product_shops_platform_check;
+ALTER TABLE product_shops ADD CONSTRAINT product_shops_platform_check CHECK(platform IN ('shopify','woocommerce','wix'));
 CREATE UNIQUE INDEX IF NOT EXISTS product_shops_company_url_idx ON product_shops(company_id,platform,url);
 CREATE TABLE IF NOT EXISTS product_listings (
  id uuid PRIMARY KEY, company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,

@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
 import * as schema from '@leek/db/schema';
-import type { StoreProduct } from '@leek/contracts';
+import type { ShopConnectionInput, StoreProduct } from '@leek/contracts';
 import { createAuth } from '@leek/auth/server';
 import { billingMigration } from '../../../packages/db/src/migrate-billing';
 import { createApp } from './app';
@@ -65,12 +65,63 @@ test('store adapters read public catalogs, prices and publication state', async 
  assert.equal(calls[3]?.url.searchParams.get('include[]'), '1');
 });
 
+test('Wix catalog version detection reads visible products and sends credentials only to Wix', async () => {
+ const siteId = randomUUID();
+ const productId = randomUUID();
+ const apiKey = 'test-wix-secret-fixture';
+ const calls: { url: URL; body?: string; headers?: Record<string, string> }[] = [];
+ const modern = {
+  id: productId, name: 'Puidust laud', visible: true, currency: 'EUR', plainDescription: '<p>Puidust laud.</p>',
+  url: { url: 'https://vello.ee/tooted/laud' },
+  media: { main: { image: { url: 'https://static.wixstatic.com/media/laud.jpg' } } },
+  actualPriceRange: { minValue: { amount: '30' }, maxValue: { amount: '45' } },
+  inventory: { availabilityStatus: 'OUT_OF_STOCK', preorderAvailability: 'SOME_VARIANTS' },
+ };
+ const legacy = {
+  id: productId, name: 'Puidust laud', visible: true, description: '<p>Puidust laud.</p>',
+  productPageUrl: { base: 'https://vello.wixsite.com/pood', path: '/product-page/laud' },
+  media: { mainMedia: { image: { url: 'https://static.wixstatic.com/media/laud.jpg' } } },
+  priceData: { currency: 'EUR', discountedPrice: 24 }, stock: { inventoryStatus: 'IN_STOCK' },
+ };
+ let version = 'V3_CATALOG';
+ const catalog = createStoreCatalog(async (url, body, headers) => {
+  calls.push({ url, body, headers });
+  const product = version === 'V3_CATALOG' ? modern : legacy;
+  const json = url.pathname.endsWith('/version') ? { catalogVersion: version } :
+   url.pathname.endsWith('/query') ? { products: [product, { ...product, visible: false }], totalResults: 3, pagingMetadata: { cursors: { next: 'wix-next' } } } :
+   { product: { ...product, visible: false } };
+  return { json, status: 200, totalPages: 0 };
+ });
+ const shop = { platform: 'wix', url: 'https://vello.ee', wix: { siteId, apiKey } } as const;
+ const v3 = await catalog.page(shop, null);
+ assert.equal(v3.next, 'wix-next');
+ assert.equal(v3.items.length, 1);
+ assert.equal(v3.items[0]?.priceCents, 3000);
+ assert.equal(v3.items[0]?.availability, 'on_order');
+ assert.equal(v3.items[0]?.fromPrice, true);
+ assert.equal(await catalog.get(shop, productId), null);
+ version = 'V1_CATALOG';
+ const v1 = await catalog.page(shop, '1');
+ assert.equal(v1.items[0]?.priceCents, 2400);
+ assert.equal(v1.items[0]?.url, 'https://vello.wixsite.com/pood/product-page/laud');
+ assert.deepEqual(v1.items[0]?.photos, ['https://static.wixstatic.com/media/laud.jpg']);
+ assert.equal(JSON.parse(calls[5]!.body!).query.paging.offset, 1);
+ assert.ok(calls.every(call => call.url.origin === 'https://www.wixapis.com' && call.headers?.authorization === apiKey && call.headers['wix-site-id'] === siteId));
+});
+
 test('product API moderates manual and imported products, syncs shops and routes private help requests', async () => {
  const client = new PGlite();
  try {
   for (const file of ['0000_stormy_paibok.sql', '0001_flaky_nebula.sql', '0002_moaning_zarda.sql']) {
    await client.exec(await readFile(new URL(`../../../packages/db/migrations/${file}`, import.meta.url), 'utf8'));
   }
+  await client.exec(`
+   CREATE TABLE product_shops (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    platform text NOT NULL CHECK(platform IN ('shopify','woocommerce')), url text NOT NULL
+   )
+  `);
   await client.exec(billingMigration);
   await client.exec(billingMigration);
   const db = drizzle(client, { schema }) as unknown as Parameters<typeof createAuth>[0];
@@ -80,8 +131,12 @@ test('product API moderates manual and imported products, syncs shops and routes
    sourceId: '1', title: 'Tammest alus', description: 'Käsitsi valmistatud alus.', photos: ['https://vello.ee/alu.jpg'],
    url: 'https://vello.ee/alus', priceCents: 1800, fromPrice: false, availability: 'in_stock',
   };
+  let wixKeyUsed: string | undefined;
   const products = createProductListings(db, {
-   page: async () => ({ items: storeItem ? [storeItem] : [], next: null }),
+   page: async (connection: ShopConnectionInput) => {
+    if (connection.platform === 'wix') wixKeyUsed = connection.wix?.apiKey;
+    return { items: storeItem ? [storeItem] : [], next: null };
+   },
    get: async () => storeItem,
   });
   Object.assign(process.env, { AWS_ENDPOINT_URL: 'https://bucket.test', AWS_S3_BUCKET_NAME: 'test', AWS_ACCESS_KEY_ID: 'test', AWS_SECRET_ACCESS_KEY: 'test-secret' });
@@ -119,6 +174,20 @@ test('product API moderates manual and imported products, syncs shops and routes
   assert.equal((await request(ownerPath, catalog, outsider.cookie)).status, 404);
   assert.equal((await request(ownerPath, catalog, owner.cookie, 'https://foreign.test')).status, 403);
   const { shop } = await okay(await request(ownerPath, catalog, owner.cookie));
+  process.env.LEEK_WIX_CREDENTIALS_KEY = Buffer.alloc(32, 19).toString('base64');
+  const wix = { siteId: randomUUID(), apiKey: 'private-wix-key-fixture' };
+  const wixCatalog = { ...catalog, connection: { platform: 'wix', url: 'https://vello.ee', wix } };
+  const connected = await okay(await request(ownerPath, wixCatalog, owner.cookie));
+  assert.equal(wixKeyUsed, wix.apiKey);
+  const [stored] = await db.select().from(schema.productShops).where(eq(schema.productShops.id, connected.shop.id));
+  assert.ok(stored?.wixApiKey);
+  assert.notEqual(stored.wixApiKey, wix.apiKey);
+  assert.doesNotMatch(JSON.stringify(connected), /private-wix-key-fixture|wixApiKey|wixSiteId/);
+  assert.doesNotMatch(JSON.stringify(await okay(await request(ownerPath, undefined, owner.cookie))), /private-wix-key-fixture|wixApiKey|wixSiteId/);
+  assert.equal((await request(ownerPath, { ...wixCatalog, connection: { ...wixCatalog.connection, wix: { ...wix, siteId: randomUUID() } } }, owner.cookie)).status, 409);
+  wixKeyUsed = undefined;
+  await okay(await request(ownerPath, { ...wixCatalog, connection: { platform: 'wix', url: 'https://vello.ee' } }, owner.cookie));
+  assert.equal(wixKeyUsed, wix.apiKey);
   const importInput = { action: 'import', shopId: shop.id, cursor: null, sourceIds: ['1'] };
   const imported = (await okay(await request(ownerPath, importInput, owner.cookie))).items[0];
   assert.equal((await okay(await request(ownerPath, importInput, owner.cookie))).items.length, 0);

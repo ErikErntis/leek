@@ -84,6 +84,8 @@ export const productShops = pgTable('product_shops', {
  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
  platform: text().$type<ShopPlatform>().notNull(),
  url: text().notNull(),
+ wixSiteId: uuid('wix_site_id'),
+ wixApiKey: text('wix_api_key'),
 }, table => [uniqueIndex('product_shops_company_url_idx').on(table.companyId, table.platform, table.url)]);
 
 export const productListings = pgTable('product_listings', {
