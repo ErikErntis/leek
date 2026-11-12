@@ -33,7 +33,6 @@
 .service-fields label { display: grid; gap: 5px; min-width: 0; font-size: 14px; font-weight: 600; }
 .service-fields small { font-size: 12px; font-weight: 400; color: var(--muted); }
 .service-fields textarea { resize: vertical; }
-.service-fields-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .service-fields .service-price-option { display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--line); padding: 10px; border-radius: 7px; }
 .service-price-option:has(input:checked) { border-color: var(--petrol); background: var(--soft); }
 .service-price-option input { accent-color: var(--petrol); margin-top: 4px; }
@@ -51,6 +50,29 @@
  .service-detail-grid, .service-editor-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 460px) {
- .service-fields-pair { grid-template-columns: 1fr; }
  .service-search input, .service-fields input:not([type="radio"]), .service-fields select, .service-fields textarea { font-size: 16px; }
 }
+
+.service-area-group, .service-package-list, .service-package-editor, .service-package-choices {
+ display: grid; gap: 9px; min-width: 0;
+}
+.service-area-group > strong { font-size: 14px; }
+.service-area-group > small { margin-top: -6px; }
+.service-area-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.service-area-options label {
+ display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line);
+ border-radius: 6px; padding: 5px 8px; font-size: 12px; font-weight: 500;
+}
+.service-fields .service-area-options input { width: auto; margin: 0; accent-color: var(--petrol); }
+.service-area-options label:has(input:checked),
+.service-package-choice:has(input:checked) { border-color: var(--petrol); background: var(--soft); }
+.service-package-editor, .service-package-choice { border: 1px solid var(--line); border-radius: 7px; padding: 10px; }
+.service-package-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 5px 10px; }
+.service-package-heading button { border: 0; background: transparent; padding: 0; font: inherit; }
+.service-package-choices { margin: 0 0 13px; padding: 0; border: 0; }
+.service-package-choices legend { padding: 0; margin-bottom: 8px; font-size: 18px; font-weight: 750; }
+.service-package-choice { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.service-package-choice input { margin: 4px 0 0; accent-color: var(--petrol); }
+.service-package-choice > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.service-package-description { color: var(--muted); font-size: 13px; white-space: pre-wrap; }
+.service-package-price { font-weight: 750; color: var(--petrol); }

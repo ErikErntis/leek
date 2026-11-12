@@ -2,7 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, Plus, Upload } from 'lucide-react';
-import { municipalities, serviceCategories, type CompanyService, type ServiceContent, type ServiceSave } from '@leek/contracts';
+import { maxServicePackages, maxServicePriceCents, municipalities, serviceCategories, type CompanyService, type ServiceContent, type ServicePackage, type ServiceSave } from '@leek/contracts';
 import type { PortalCompany } from '../../lib/portal';
 import { ServiceDetail } from '../service-detail';
 
@@ -12,11 +12,25 @@ const blank: ServiceContent = {
  title: '', category: serviceCategories[0], area: municipalities[0], description: '', pricing: 'quote', priceCents: null, photo: '',
 };
 
+type EditablePackage = Omit<ServicePackage, 'priceCents'> & { price: string };
+
+function priceInput(cents: number | null | undefined) {
+ return cents == null ? '' : (cents / 100).toFixed(2);
+}
+
+function parsePrice(value: string) {
+ const trimmed = value.trim();
+ if (!/^\d+(?:[.,]\d{1,2})?$/.test(trimmed)) return null;
+ const cents = Math.round(Number(trimmed.replace(',', '.')) * 100);
+ return cents >= 1 && cents <= maxServicePriceCents ? cents : null;
+}
+
 export function ServiceEditor({ company, initial }: { company: PortalCompany; initial: CompanyService[] }) {
  const [items, setItems] = useState(initial);
  const [selected, setSelected] = useState<{ id: string; version: number | null } | null>(null);
  const [content, setContent] = useState(blank);
  const [price, setPrice] = useState('');
+ const [packages, setPackages] = useState<EditablePackage[]>([]);
  const [preview, setPreview] = useState(false);
  const [error, setError] = useState('');
  const [message, setMessage] = useState('');
@@ -34,7 +48,8 @@ export function ServiceEditor({ company, initial }: { company: PortalCompany; in
  function open(item?: CompanyService) {
   setSelected(item ? { id: item.id, version: item.version } : { id: crypto.randomUUID(), version: null });
   setContent(item?.content ?? blank);
-  setPrice(item?.content.priceCents == null ? '' : (item.content.priceCents / 100).toFixed(2));
+  setPrice(priceInput(item?.content.priceCents));
+  setPackages(item?.content.packages?.map(({ priceCents, ...entry }) => ({ ...entry, price: priceInput(priceCents) })) ?? []);
   setPreview(false);
   setError('');
   setMessage('');
@@ -43,15 +58,42 @@ export function ServiceEditor({ company, initial }: { company: PortalCompany; in
 
  const current = items.find(item => item.id === selected?.id);
  const locked = current?.status === 'pending';
- const cents = /^\d+(?:[.,]\d{1,2})?$/.test(price.trim()) ? Math.round(Number(price.trim().replace(',', '.')) * 100) : null;
- const candidate = { ...content, priceCents: content.pricing === 'fixed' ? cents : null };
+ const areas = content.areas ?? [content.area];
+ const fixed = content.pricing === 'fixed';
+ const packageContent = fixed ? packages.map(({ price, ...entry }) => ({ ...entry, priceCents: parsePrice(price) })) : [];
+ const candidate: ServiceContent = {
+  ...content, area: areas[0] ?? content.area, areas,
+  priceCents: fixed && packages.length === 0 ? parsePrice(price) : null,
+  packages: packageContent,
+ };
+
+ function changePackage(id: string, patch: Partial<Omit<EditablePackage, 'id'>>) {
+  setPackages(old => old.map(item => item.id === id ? { ...item, ...patch } : item));
+  setMessage('');
+ }
 
  async function save(action: ServiceSave['action']) {
   if (!selected || pending.current) return;
   const isContentEdit = action === 'draft' || action === 'submit';
-  if (isContentEdit && content.pricing === 'fixed' && ((price.trim() && (cents === null || cents < 1 || cents > 100_000_000)) || (action === 'submit' && cents === null))) {
-   setError('Sisesta hind eurodes, kuni kaks komakohta.');
+  if (isContentEdit && areas.length === 0) {
+   setError('Vali vähemalt üks teeninduspiirkond.');
    return;
+  }
+  if (isContentEdit && fixed) {
+   const invalidPrice = packages.length
+    ? packages.some(item => item.price.trim() && parsePrice(item.price) === null)
+    : price.trim() && candidate.priceCents === null;
+   if (invalidPrice) {
+    setError('Sisesta hind eurodes, kuni kaks komakohta.');
+    return;
+   }
+   const incomplete = packages.length
+    ? packageContent.some(item => !item.title.trim() || item.priceCents === null)
+    : candidate.priceCents === null;
+   if (action === 'submit' && incomplete) {
+    setError('Lisa teenuse hind või täida iga paketi nimi ja hind.');
+    return;
+   }
   }
   if (action === 'submit' && (content.title.trim().length < 3 || content.description.trim().length < 10)) {
    setError('Sisesta vähemalt 3 märgi pikkune nimi ja 10 märgi pikkune kirjeldus.');
@@ -141,9 +183,14 @@ export function ServiceEditor({ company, initial }: { company: PortalCompany; in
       <fieldset className="profile-edit-card service-fields" disabled={busy || locked}>
        <legend>Teenuse andmed</legend>
        <label>Teenuse nimi<input ref={titleInput} value={content.title} maxLength={80} onChange={event => change('title', event.target.value)} /></label>
-       <div className="service-fields-pair">
-        <label>Kategooria<select value={content.category} onChange={event => change('category', event.target.value as ServiceContent['category'])}>{serviceCategories.map(item => <option key={item}>{item}</option>)}</select></label>
-        <label>Teeninduspiirkond<select value={content.area} onChange={event => change('area', event.target.value as ServiceContent['area'])}>{municipalities.map(item => <option key={item}>{item}</option>)}</select></label>
+       <label>Kategooria<select value={content.category} onChange={event => change('category', event.target.value as ServiceContent['category'])}>{serviceCategories.map(item => <option key={item}>{item}</option>)}</select></label>
+       <div role="group" aria-label="Teeninduspiirkonnad" className="service-area-group">
+        <strong>Teeninduspiirkonnad</strong><small>Vali kõik piirkonnad, kus teenust pakud.</small>
+        <div className="service-area-options">{municipalities.map(area => (
+         <label key={area}><input type="checkbox" checked={areas.includes(area)} onChange={event => {
+          change('areas', event.target.checked ? [...areas, area] : areas.filter(item => item !== area));
+         }} />{area}</label>
+        ))}</div>
        </div>
        <label>Teenuse kirjeldus<textarea value={content.description} maxLength={1000} rows={5} onChange={event => change('description', event.target.value)} /></label>
       </fieldset>
@@ -165,7 +212,35 @@ export function ServiceEditor({ company, initial }: { company: PortalCompany; in
       <legend>Hind ja tellimine</legend>
       <label className="service-price-option"><input type="radio" name="pricing" checked={content.pricing === 'quote'} onChange={() => change('pricing', 'quote')} /><span><strong>Pakkumise alusel</strong><small>Klient kirjeldab tööd ja sina saadad hinna.</small></span></label>
       <label className="service-price-option"><input type="radio" name="pricing" checked={content.pricing === 'fixed'} onChange={() => change('pricing', 'fixed')} /><span><strong>Kindel hind</strong><small>Klient saadab tellimissoovi kokkulepitud hinnaga.</small></span></label>
-      {content.pricing === 'fixed' && <label>Hind (€)<input value={price} inputMode="decimal" maxLength={10} placeholder="60,00" onChange={event => { setPrice(event.target.value); setMessage(''); }} /></label>}
+      {fixed && <>
+       {packages.length === 0 ? (
+        <label>Hind (€)<input value={price} inputMode="decimal" maxLength={10} placeholder="60,00" onChange={event => {
+         setPrice(event.target.value);
+         setMessage('');
+        }} /></label>
+       ) : <div className="service-package-list">
+        {packages.map((item, index) => (
+         <div className="service-package-editor" role="group" aria-label={`Pakett ${index + 1}`} key={item.id}>
+          <div className="service-package-heading">
+           <strong>Pakett {index + 1}</strong>
+           <button type="button" className="text-link" onClick={() => {
+            setPackages(old => old.filter(entry => entry.id !== item.id));
+            setMessage('');
+           }} aria-label={`Eemalda pakett ${index + 1}`}>Eemalda</button>
+          </div>
+          <label>Paketi nimi<input value={item.title} maxLength={60} placeholder="Näiteks Kummuti kokkupanek" onChange={event => changePackage(item.id, { title: event.target.value })} /></label>
+          <label>Mida pakett sisaldab?<textarea value={item.description} maxLength={300} rows={2} onChange={event => changePackage(item.id, { description: event.target.value })} /></label>
+          <label>Paketi hind (€)<input value={item.price} inputMode="decimal" maxLength={10} placeholder="60,00" onChange={event => changePackage(item.id, { price: event.target.value })} /></label>
+         </div>
+        ))}
+       </div>}
+       <button type="button" className="button secondary" disabled={packages.length >= maxServicePackages} onClick={() => {
+        const entry = { id: crypto.randomUUID(), title: '', description: '', price: packages.length === 0 ? price : '' };
+        setPackages(old => [...old, entry]);
+        setMessage('');
+       }}><Plus size={16} aria-hidden="true" /> Lisa pakett</button>
+       <small>{packages.length ? `Pakette ${packages.length}/${maxServicePackages}` : 'Kui töö maht või hind sõltub variandist, lisa eraldi paketid.'}</small>
+      </>}
      </fieldset>
     </div>
     <div className="service-editor-actions">

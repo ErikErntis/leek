@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
 import * as schema from '@leek/db/schema';
 import { createAuth } from '@leek/auth/server';
-import type { ServiceContent } from '@leek/contracts';
+import { getServiceAreas, getServicePriceLabel, type ServiceContent } from '@leek/contracts';
 import { billingMigration } from '../../../packages/db/src/migrate-billing';
 import { createApp } from './app';
 import { createCompanyService } from './company-service';
@@ -104,8 +104,34 @@ test('service listings preserve the approved version, enforce ownership and prot
   assert.equal((await request(publicPath)).status, 404);
   assert.equal((await request(photoPath)).status, 404);
   assert.equal((await successful(await request('/v1/services'))).items.length, 0);
-  await successful(await request(ownerPath, { id, version: hidden.version, action: 'show' }, owner.cookie));
-  assert.equal((await successful(await request(publicPath))).title, content.title);
+  const shown = await successful(await request(ownerPath, { id, version: hidden.version, action: 'show' }, owner.cookie));
+  const legacy = await successful(await request(publicPath));
+  assert.equal(legacy.title, content.title);
+  assert.deepEqual(getServiceAreas(legacy), ['Lääne-Harju vald']);
+  assert.doesNotMatch(getServicePriceLabel(legacy), /Alates/);
+
+  const firstPackage = { id: randomUUID(), title: 'Üks mööbliese', description: 'Kummuti kokkupanek.', priceCents: 6000 };
+  const packaged: ServiceContent = {
+   ...content, areas: ['Lääne-Harju vald', 'Keila linn'], priceCents: null,
+   packages: [firstPackage, { ...firstPackage, id: randomUUID(), title: 'Kaks mööblieset', priceCents: 11000 }],
+  };
+  const submitPackages = { id, version: shown.version, action: 'submit', content: packaged };
+  for (const invalid of [
+   { ...packaged, areas: ['Lääne-Harju vald', 'Lääne-Harju vald'] },
+   { ...packaged, pricing: 'quote' },
+   { ...packaged, priceCents: 6000 },
+   { ...packaged, packages: [{ ...firstPackage, priceCents: null }] },
+  ]) {
+   assert.equal((await request(ownerPath, { ...submitPackages, content: invalid }, owner.cookie)).status, 400);
+  }
+  const packageReview = await successful(await request(ownerPath, submitPackages, owner.cookie));
+  assert.equal((await successful(await request('/v1/services?q=Keila'))).items.length, 0);
+  await successful(await request(reviewPath, { decision: 'approve', version: packageReview.version }, admin.cookie, origins[1]));
+  const matches = await successful(await request('/v1/services?q=Keila'));
+  assert.equal(matches.items.length, 1);
+  assert.deepEqual(matches.items[0].packages, packaged.packages);
+  assert.deepEqual(getServiceAreas(matches.items[0]), packaged.areas);
+  assert.match(getServicePriceLabel(matches.items[0]), /^Alates 60/);
  } finally {
   await client.close();
  }

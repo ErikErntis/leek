@@ -53,8 +53,14 @@ export function createServiceListings(db: Database) {
    if (!content) throw new CompanyError(400, 'Lisa teenuse andmed.');
    if (action === 'submit') {
     if (company.status !== 'published') throw new CompanyError(409, 'Teenus saab ülevaatusele minna pärast ettevõtte kinnitamist.');
-    if (content.title.length < 3 || content.description.length < 10 || (content.pricing === 'fixed' && content.priceCents === null)) {
-     throw new CompanyError(400, 'Lisa teenuse nimi, kirjeldus ja kindla hinna korral hind.');
+    if (content.title.length < 3 || content.description.length < 10) {
+     throw new CompanyError(400, 'Lisa teenuse nimi ja kirjeldus.');
+    }
+    if (content.pricing === 'fixed') {
+     const packages = content.packages ?? [];
+     if (packages.length ? packages.some(item => !item.title || item.priceCents === null) : content.priceCents === null) {
+      throw new CompanyError(400, 'Lisa teenuse hind või täida iga paketi nimi ja hind.');
+     }
     }
    }
    if (content.photo) {
@@ -97,6 +103,10 @@ export function createServiceListings(db: Database) {
      ilike(sql`${serviceListings.published}->>'description'`, pattern),
      ilike(sql`${serviceListings.published}->>'category'`, pattern),
      ilike(sql`${serviceListings.published}->>'area'`, pattern),
+     sql`exists (
+      select 1 from jsonb_array_elements_text(${serviceListings.published}->'areas') as area(value)
+      where area.value ilike ${pattern}
+     )`,
      ilike(companies.name, pattern), ilike(companies.brandName, pattern),
     ) : undefined,
    )).orderBy(desc(serviceListings.updatedAt), desc(serviceListings.id)).offset(offset).limit(41);

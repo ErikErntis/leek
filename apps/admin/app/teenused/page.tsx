@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { WorkspaceShell } from '@leek/ui';
-import { formatServicePrice, reviewDecisionSchema, type CompanyService } from '@leek/contracts';
+import { formatServicePrice, getServiceAreas, getServicePriceLabel, reviewDecisionSchema, type CompanyService } from '@leek/contracts';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Teenuste ülevaatus', robots: { index: false, follow: false } };
@@ -43,8 +43,14 @@ export default async function ServiceReviews({ searchParams }: { searchParams: P
   {!items.length && <section className="panel"><p>Ülevaatust ootavaid teenuseid pole.</p></section>}
   {items.map(({ listing, companyName }) => <section className="panel" key={listing.id} style={{ marginBottom: 18 }}>
    <h2>{listing.content.title}</h2>
-   <p>{companyName} · {listing.content.category} · {listing.content.area}</p>
-   <p><strong>{listing.content.priceCents === null ? 'Pakkumise alusel' : formatServicePrice(listing.content.priceCents)}</strong></p>
+   <p>{companyName} · {listing.content.category} · {getServiceAreas(listing.content).join(', ')}</p>
+   <p><strong>{getServicePriceLabel(listing.content)}</strong></p>
+   {Boolean(listing.content.packages?.length) && <ul>
+    {listing.content.packages?.map(item => <li key={item.id}>
+     <strong>{item.title} · {item.priceCents === null ? 'Hind määramata' : formatServicePrice(item.priceCents)}</strong>
+     {item.description && <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.description}</p>}
+    </li>)}
+   </ul>}
    {listing.content.photo && <img src={listing.content.photo} width={260} height={146} style={{ objectFit: 'contain' }} alt="Esitatud teenuse foto" />}
    <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{listing.content.description}</p>
    {listing.published && <p>Varasem kinnitatud versioon on {listing.visible ? 'avalik' : 'peidetud'}.</p>}

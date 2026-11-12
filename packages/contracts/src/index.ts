@@ -97,15 +97,34 @@ export function companyDisplayName(company: { name: string; brandName?: string }
 }
 
 export const serviceCategories = ['Mööbel ja sisustus', 'Remont ja ehitus', 'Kodu ja aed', 'Muud teenused'] as const;
+export const maxServicePackages = 5;
+export const maxServicePriceCents = 100_000_000;
+const servicePackageSchema = z.object({
+ id: z.string().uuid(),
+ title: z.string().trim().max(60),
+ description: z.string().trim().max(300),
+ priceCents: z.number().int().min(1).max(maxServicePriceCents).nullable(),
+}).strict();
+export type ServicePackage = z.infer<typeof servicePackageSchema>;
+
 export const serviceContentSchema = z.object({
  title: z.string().trim().max(80),
  category: z.enum(serviceCategories),
  area: z.enum(municipalities),
+ areas: z.array(z.enum(municipalities)).min(1).max(municipalities.length).optional(),
  description: z.string().trim().max(1000),
  pricing: z.enum(['quote', 'fixed']),
- priceCents: z.number().int().min(1).max(100_000_000).nullable(),
+ priceCents: z.number().int().min(1).max(maxServicePriceCents).nullable(),
+ packages: z.array(servicePackageSchema).max(maxServicePackages).optional(),
  photo: z.union([z.literal(''), z.string().regex(/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)]),
-}).strict().refine(content => content.pricing === 'fixed' || content.priceCents === null);
+}).strict().refine(content => {
+ const { area, areas, packages = [], pricing, priceCents } = content;
+ if (areas && (areas[0] !== area || new Set(areas).size !== areas.length)) return false;
+ if (new Set(packages.map(item => item.id)).size !== packages.length) return false;
+ return pricing === 'quote'
+  ? priceCents === null && packages.length === 0
+  : packages.length === 0 || priceCents === null;
+});
 export type ServiceContent = z.infer<typeof serviceContentSchema>;
 
 export const serviceSaveSchema = z.object({
@@ -131,4 +150,15 @@ export type PublicService = ServiceContent & {
 };
 export function formatServicePrice(cents: number) {
  return new Intl.NumberFormat('et-EE', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+}
+
+export function getServiceAreas(service: Pick<ServiceContent, 'area' | 'areas'>) {
+ return service.areas?.length ? service.areas : [service.area];
+}
+
+export function getServicePriceLabel(service: Pick<ServiceContent, 'pricing' | 'priceCents' | 'packages'>) {
+ if (service.pricing === 'quote') return 'Pakkumise alusel';
+ const prices = service.packages?.flatMap(item => item.priceCents === null ? [] : [item.priceCents]) ?? [];
+ if (prices.length) return 'Alates ' + formatServicePrice(Math.min(...prices));
+ return service.priceCents === null ? 'Hind määramata' : formatServicePrice(service.priceCents);
 }
