@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { emptyAuthValues, validateAuth, type AuthErrors, type AuthMode, type AuthValues } from './validation';
 import styles from './auth.module.css';
-import { authDestination } from '../../lib/auth-destination';
+import { authDestination, inquiryAuthDestination } from '../../lib/auth-destination';
 import type { Plan } from '@leek/contracts';
 
 type PasswordFieldProps = {
@@ -64,7 +64,8 @@ export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; s
   const otherRoute = register ? '/logi-sisse' : '/registreeru';
   const switchQuery = new URLSearchParams();
   if (selectedPlanId) switchQuery.set('pakett', selectedPlanId);
-  if (nextPath) switchQuery.set('next', authDestination(nextPath));
+  const inquiryNext = inquiryAuthDestination(nextPath);
+  if (inquiryNext) switchQuery.set('next', inquiryNext);
   const switchHref = otherRoute + (switchQuery.size ? `?${switchQuery}` : '');
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -129,7 +130,7 @@ export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; s
         throw new Error(register ? 'Kontot ei saanud luua. Kontrolli andmeid või proovi olemasoleva kontoga sisse logida.' : 'E-post või parool ei ole õige.');
       }
       // A full navigation lets the server read the HttpOnly session cookie immediately.
-      window.location.assign(register
+      window.location.assign(register && !nextPath
         ? selectedPlanId ? `/ettevote/lisa?pakett=${encodeURIComponent(selectedPlanId)}` : '/ettevote/lisa'
         : authDestination(nextPath));
     } catch (error) {

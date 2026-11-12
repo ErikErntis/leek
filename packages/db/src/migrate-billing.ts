@@ -72,6 +72,29 @@ CREATE TABLE IF NOT EXISTS product_help_requests (
  shop_url text NOT NULL, email text NOT NULL, message text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz
 );
+CREATE TABLE IF NOT EXISTS inquiries (
+ id uuid PRIMARY KEY, customer_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('product','fixed_service','service_quote')),
+ status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','accepted','declined')),
+ snapshot jsonb NOT NULL, location text, desired_date text,
+ updated_at timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inquiries_customer_idx ON inquiries(customer_id,updated_at);
+CREATE INDEX IF NOT EXISTS inquiries_company_idx ON inquiries(company_id,updated_at);
+CREATE TABLE IF NOT EXISTS inquiry_messages (
+ id uuid PRIMARY KEY, inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+ side text NOT NULL CHECK(side IN ('customer','company')), body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inquiry_messages_thread_idx ON inquiry_messages(inquiry_id,created_at,id);
+CREATE TABLE IF NOT EXISTS inquiry_offers (
+ id uuid PRIMARY KEY, inquiry_id uuid NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
+ price_cents integer NOT NULL CHECK(price_cents >= 0), proposed_date text, message text NOT NULL,
+ status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined','replaced')),
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS inquiry_offers_thread_idx ON inquiry_offers(inquiry_id,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS inquiry_offers_one_pending_idx ON inquiry_offers(inquiry_id) WHERE status='pending';
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {

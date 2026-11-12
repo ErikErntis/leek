@@ -1,3 +1,4 @@
+import type { createInquiries } from './inquiries';
 import type { createProductListings } from './product-listings';
 import type { createServiceListings } from './service-listings';
 import type { createProfileService } from './company-profile';
@@ -13,7 +14,7 @@ import type { createAuth } from '@leek/auth/server';
 import { companyRoutes } from './company-routes';
 import type { createCompanyService } from './company-service';
 export type AuthHandler = Pick<ReturnType<typeof createAuth>, 'handler' | 'api'>;
-export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>) {
+export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>) {
  const app = new Hono();
  app.use('*',secureHeaders());
  app.use('/api/auth/*', bodyLimit({ maxSize: 16384, onError: c => c.json({ error: 'Liiga suur päring' }, 413) }));
@@ -39,7 +40,7 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
  });
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:undefined,allowMethods:['GET','OPTIONS']}));
  if(media)app.route('/',media);
- app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products));
+ app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products, inbox));
  app.get('/health',async c=>{try {await repository.check();return c.json({status:'ok'});}catch{return c.json({status:'unavailable'},503);}});
  app.get('/v1/public',async c=>c.json(publicProjection(await repository.readPublic())));
  app.get('/v1/companies',async c=>{const q=directoryQuerySchema.safeParse(c.req.query());if(!q.success)return c.json({error:'Vigased otsinguparameetrid'},400);const data=publicProjection(await repository.readPublic());return c.json({items:filterCompanies(data.companies,q.data),source:data.source});});

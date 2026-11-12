@@ -1,3 +1,5 @@
+import { inquiryActionSchema, inquiryCreateSchema } from '@leek/contracts';
+import type { createInquiries } from './inquiries';
 import type { createProductListings } from './product-listings';
 import { productActionSchema } from '@leek/contracts';
 import type { createServiceListings } from './service-listings';
@@ -13,7 +15,7 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
     routes.use(path, bodyLimit({ maxSize: 32768 }));
@@ -35,6 +37,36 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     await next();
   });
   const validId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  routes.get('/v1/my/inquiries', async c => {
+    if (!inbox) return c.json({ error: 'Päringud pole seadistatud.' }, 503);
+    const company = c.req.query('company');
+    const offset = Number(c.req.query('offset') ?? 0);
+    if ((company !== undefined && !validId(company)) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) return c.notFound();
+    return c.json(await inbox.list(c.get('userId'), company, offset));
+  });
+  routes.get('/v1/my/inquiries/:id', async c => {
+    if (!inbox) return c.json({ error: 'Päringud pole seadistatud.' }, 503);
+    const { id } = c.req.param();
+    const company = c.req.query('company');
+    const offset = Number(c.req.query('offset') ?? 0);
+    if (!validId(id) || (company !== undefined && !validId(company)) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) return c.notFound();
+    return c.json(await inbox.detail(c.get('userId'), id, company, offset));
+  });
+  routes.post('/v1/my/inquiries', async c => {
+    if (!inbox) return c.json({ error: 'Päringud pole seadistatud.' }, 503);
+    const input = inquiryCreateSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: 'Kontrolli päringu andmeid.' }, 400);
+    return c.json(await inbox.create(c.get('userId'), input.data), 201);
+  });
+  routes.post('/v1/my/inquiries/:id', async c => {
+    if (!inbox) return c.json({ error: 'Päringud pole seadistatud.' }, 503);
+    const { id } = c.req.param();
+    const company = c.req.query('company');
+    if (!validId(id) || (company !== undefined && !validId(company))) return c.notFound();
+    const input = inquiryActionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: 'Kontrolli vastuse andmeid.' }, 400);
+    return c.json(await inbox.act(c.get('userId'), id, company, input.data));
+  });
   routes.get('/v1/my/portal', async c => {
     if (!billing) return c.json({ error: 'Portaal pole seadistatud.' }, 503);
     return c.json(await billing.overview(c.get('userId')));

@@ -1,12 +1,14 @@
 import { Building2, MapPin, Users } from 'lucide-react';
 import { AuthForm } from './auth-form';
 import type { AuthMode } from './validation';
+import { inquiryAuthDestination } from '../../lib/auth-destination';
 import { RegionNotice } from '../region-notice';
 import { formatAnnualPrice, type PricingPlan } from '../../lib/pricing';
 import styles from './auth.module.css';
 
 export function AuthScreen({ mode, selectedPlan, nextPath }: { mode: AuthMode; selectedPlan?: PricingPlan; nextPath?: string }) {
   const register = mode === 'register';
+  const inquiry = Boolean(inquiryAuthDestination(nextPath));
 
   return (
     <div className={styles.page}>
@@ -31,7 +33,9 @@ export function AuthScreen({ mode, selectedPlan, nextPath }: { mode: AuthMode; s
           <span className={styles.formEyebrow}>LEEKI ISETEENINDUS</span>
           <h1 id="auth-title">{register ? 'Tere tulemast meie sekka.' : 'Hea sind jälle näha.'}</h1>
           <p className={styles.formIntro}>
-            {register
+            {inquiry
+              ? register ? 'Loo konto, et saata päring ja lugeda ettevõtte vastust.' : 'Logi sisse, et jätkata oma päringuga.'
+              : register
               ? 'Alusta oma kontost. Ettevõtte andmed saad lisada järgmise sammuna.'
               : 'Logi sisse, et oma ettevõtte tegemistel silma peal hoida.'}
           </p>
@@ -44,7 +48,7 @@ export function AuthScreen({ mode, selectedPlan, nextPath }: { mode: AuthMode; s
               <div className={styles.planChoiceBottom}><span>Konto loomine on tasuta.</span><a href="/liitu#paketid">Muuda paketti →</a></div>
             </aside>
           )}
-          {register && <RegionNotice compact />}
+          {register && !inquiry && <RegionNotice compact />}
           <AuthForm key={`${mode}:${selectedPlan?.id ?? 'none'}`} mode={mode} selectedPlanId={selectedPlan?.id} nextPath={nextPath} />
         </section>
       </div>

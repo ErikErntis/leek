@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { ProductContent, PublicProfileInput, ServiceContent, ShopPlatform, SyncedProduct } from '@leek/contracts';
+import type { InquiryKind, InquirySide, InquirySnapshot, InquiryStatus } from '@leek/contracts';
 import { pgTable, uuid, text, timestamp, boolean, uniqueIndex, index, primaryKey, pgEnum, integer, bigint, jsonb } from 'drizzle-orm/pg-core';
 export const publicationStatus = pgEnum('publication_status', ['draft','pending','published','rejected']);
 export const contentStatus = pgEnum('content_status', ['draft','pending','published','closed']);
@@ -119,3 +120,37 @@ export const productHelpRequests = pgTable('product_help_requests', {
  createdAt: created(),
  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
 });
+
+export const inquiries = pgTable('inquiries', {
+ id: uuid().primaryKey(),
+ customerId: uuid('customer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ kind: text().$type<InquiryKind>().notNull(),
+ status: text().$type<InquiryStatus>().notNull().default('open'),
+ snapshot: jsonb().$type<InquirySnapshot>().notNull(),
+ location: text(),
+ desiredDate: text('desired_date'),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+ createdAt: created(),
+}, table => [index('inquiries_customer_idx').on(table.customerId, table.updatedAt), index('inquiries_company_idx').on(table.companyId, table.updatedAt)]);
+
+export const inquiryMessages = pgTable('inquiry_messages', {
+ id: uuid().primaryKey(),
+ inquiryId: uuid('inquiry_id').notNull().references(() => inquiries.id, { onDelete: 'cascade' }),
+ side: text().$type<InquirySide>().notNull(),
+ body: text().notNull(),
+ createdAt: created(),
+}, table => [index('inquiry_messages_thread_idx').on(table.inquiryId, table.createdAt, table.id)]);
+
+export const inquiryOffers = pgTable('inquiry_offers', {
+ id: uuid().primaryKey(),
+ inquiryId: uuid('inquiry_id').notNull().references(() => inquiries.id, { onDelete: 'cascade' }),
+ priceCents: integer('price_cents').notNull(),
+ proposedDate: text('proposed_date'),
+ message: text().notNull(),
+ status: text().$type<'pending' | 'accepted' | 'declined' | 'replaced'>().notNull().default('pending'),
+ createdAt: created(),
+}, table => [
+ index('inquiry_offers_thread_idx').on(table.inquiryId, table.createdAt),
+ uniqueIndex('inquiry_offers_one_pending_idx').on(table.inquiryId).where(sql`${table.status} = 'pending'`),
+]);

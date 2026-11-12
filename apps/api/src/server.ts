@@ -1,3 +1,4 @@
+import { createInquiries } from './inquiries';
 import { createProductListings } from './product-listings';
 import { logError } from './log-error';
 import { createServiceListings } from './service-listings';
@@ -35,7 +36,7 @@ const port=Number(process.env.PORT??3003);
 if(!Number.isInteger(port)||port<1||port>65535)throw new Error('PORT must be a valid port');
 const origins = Array.from(new Set([...(process.env.ALLOWED_ORIGINS ?? '').split(',').map(x=>x.trim()).filter(Boolean), ...(publicURL ? [new URL(publicURL).origin] : []), ...[process.env.ADMIN_URL].filter((x): x is string => Boolean(x)).map(x => new URL(x).origin)]));
 const products = database ? createProductListings(database.db) : undefined;
-const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined, database ? createProfileService(database.db) : undefined, database && auth ? createMediaRoutes(database.db,auth,origins) : undefined, database ? createServiceListings(database.db) : undefined, products).fetch,port,hostname:'0.0.0.0'});
+const server=serve({fetch:createApp(repository,origins,auth,database ? createCompanyService(database.db) : undefined, database ? createBilling(database.db) : undefined, database ? createProfileService(database.db) : undefined, database && auth ? createMediaRoutes(database.db,auth,origins) : undefined, database ? createServiceListings(database.db) : undefined, products, database ? createInquiries(database.db) : undefined).fetch,port,hostname:'0.0.0.0'});
 console.log(`LEEK API listening on ${port} (${demo?'DEMO':'database'})`);
 let syncing = false;
 const syncTimer = products ? setInterval(async () => {

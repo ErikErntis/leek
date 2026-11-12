@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Brand } from '@leek/ui';
-import { ArrowUpRight, Building2, LayoutDashboard, Layers, Tags, BriefcaseBusiness } from 'lucide-react';
+import { ArrowUpRight, Building2, LayoutDashboard, Layers, Tags, BriefcaseBusiness, Inbox } from 'lucide-react';
 import { LogoutButton } from '../auth/logout-button';
 import type { PortalCompany } from '../../lib/portal';
 
@@ -9,6 +9,7 @@ const navigation = [
   ['Ettevõtte profiil', '/portaal/profiil', Building2],
   ['Teenused', '/portaal/teenused', Tags],
   ['Tooted', '/portaal/tooted', Tags],
+  ['Päringud', '/portaal/paringud', Inbox],
   ['Töökuulutused', '/portaal/tookuulutused', BriefcaseBusiness],
   ['Pakett ja maksmine', '/portaal/pakett', Layers],
 ] as const;

@@ -12,6 +12,6 @@ export default async function ServicePage({ params }: Props) {
  const service = await getPublicService((await params).id);
  return <div className="container service-page">
   <p className="service-breadcrumb"><a href="/teenused">Teenused</a> / {service.category}</p>
-  <ServiceDetail service={service} company={service.company} />
+  <ServiceDetail service={service} company={service.company} listingId={service.id} />
  </div>;
 }

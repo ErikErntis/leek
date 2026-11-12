@@ -164,3 +164,5 @@ export function getServicePriceLabel(service: Pick<ServiceContent, 'pricing' | '
 }
 
 export * from "./products";
+
+export * from "./inquiries";
