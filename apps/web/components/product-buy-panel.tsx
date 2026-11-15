@@ -1,11 +1,12 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { ArrowUpRight, Mail } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { formatServicePrice, productAvailability, type PublicProduct } from '@leek/contracts';
-import { startInquiryHref } from '../lib/inquiry-links';
+import { InquiryContactActions } from './inquiries/contact-actions';
+import { inquiryEmailHref, startInquiryHref } from '../lib/inquiry-links';
 
-export function ProductBuyPanel({ product }: { product: PublicProduct }) {
+export function ProductBuyPanel({ product, signedIn = false }: { product: PublicProduct; signedIn?: boolean }) {
  const { content, availability, linked, fromPrice } = product;
  const group = useId();
  const [selectedId, setSelected] = useState(content.variants[0]?.id);
@@ -26,6 +27,8 @@ export function ProductBuyPanel({ product }: { product: PublicProduct }) {
   {content.shopUrl ? <a className="button" href={content.shopUrl} rel="noopener noreferrer">
    {stock === 'sold_out' ? 'Vaata e-poes' : 'Osta e-poest'} <ArrowUpRight size={16} aria-hidden="true" />
   </a> : linked ? <p>Tootelink pole praegu saadaval.</p> :
-   <a className="button" href={startInquiryHref('product', product.id, selected?.id)}>Küsi toote kohta <Mail size={16} aria-hidden="true" /></a>}
+   <InquiryContactActions portalHref={startInquiryHref('product', product.id, selected?.id)}
+    emailHref={inquiryEmailHref(product.company.email, content.title, selected ? `Variant: ${selected.name}` : undefined)}
+    signedIn={signedIn} portalLabel="Küsi toote kohta" />}
  </aside>;
 }

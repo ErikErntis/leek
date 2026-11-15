@@ -1,10 +1,12 @@
+import { customerInboxPath } from './inquiry-links';
+
 /** Only local portal and inquiry routes can be used as post-login destinations. */
 export function authDestination(value: unknown): string {
   if (typeof value !== 'string' || value.length > 1000 || /[\\\u0000-\u0020\u007f]/.test(value)) return '/portaal';
   try {
     const url = new URL(value, 'https://leek.invalid');
     if (!value.startsWith('/') || url.origin !== 'https://leek.invalid') return '/portaal';
-    const allowed = ['/portaal', '/minu-paringud'];
+    const allowed = ['/portaal', customerInboxPath];
     if (!allowed.some(path => url.pathname === path || url.pathname.startsWith(path + '/'))) return '/portaal';
     return url.pathname + url.search;
   } catch { return '/portaal'; }
@@ -13,5 +15,5 @@ export function authDestination(value: unknown): string {
 export function inquiryAuthDestination(value: unknown): string | undefined {
  const destination = authDestination(value);
  const pathname = destination.split('?')[0];
- return pathname === '/minu-paringud' || pathname?.startsWith('/minu-paringud/') ? destination : undefined;
+ return pathname === customerInboxPath || pathname?.startsWith(customerInboxPath + '/') ? destination : undefined;
 }

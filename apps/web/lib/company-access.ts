@@ -7,6 +7,7 @@ import { getSession } from './session';
 export async function requireCompanyOnboardingAccess(selectedPlanId?: Plan) {
   const session = await getSession();
   if (session) return session;
-  const query = selectedPlanId ? `?pakett=${encodeURIComponent(selectedPlanId)}` : '';
-  redirect(`/logi-sisse${query}`);
+  const query = new URLSearchParams({ next: '/portaal' });
+  if (selectedPlanId) query.set('pakett', selectedPlanId);
+  redirect(`/logi-sisse?${query}`);
 }

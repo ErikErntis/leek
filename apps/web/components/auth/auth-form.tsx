@@ -66,6 +66,7 @@ export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; s
   if (selectedPlanId) switchQuery.set('pakett', selectedPlanId);
   const inquiryNext = inquiryAuthDestination(nextPath);
   if (inquiryNext) switchQuery.set('next', inquiryNext);
+  else if (register) switchQuery.set('next', '/portaal');
   const switchHref = otherRoute + (switchQuery.size ? `?${switchQuery}` : '');
   const formId = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -175,7 +176,7 @@ export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; s
           type="email"
           inputMode="email"
           className={`${styles.input} ${errors.email ? styles.invalidInput : ''}`}
-          placeholder="nimi@ettevote.ee"
+          placeholder={inquiryNext ? 'nimi@näide.ee' : 'nimi@ettevote.ee'}
           autoComplete={register ? 'email' : 'username'}
           autoCapitalize="none"
           spellCheck={false}
@@ -216,7 +217,7 @@ export function AuthForm({ mode, selectedPlanId, nextPath }: { mode: AuthMode; s
       {status === 'error' && <p role="alert" className={styles.errorSummary}>{serverError}</p>}
       <p className={styles.switchLink}>
         {register ? 'Konto on juba olemas?' : 'Pole veel kontot?'}{' '}
-        <a href={switchHref}>{register ? 'Logi sisse' : 'Loo konto'}</a>
+        <a href={switchHref}>{register ? 'Logi sisse' : inquiryNext ? 'Loo kliendikonto' : 'Loo konto'}</a>
       </p>
     </form>
   );

@@ -1,11 +1,11 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
 import { formatServicePrice, getServicePriceLabel, type ServiceContent } from '@leek/contracts';
-import { startInquiryHref } from '../lib/inquiry-links';
+import { InquiryContactActions } from './inquiries/contact-actions';
+import { inquiryEmailHref, startInquiryHref } from '../lib/inquiry-links';
 
-export function ServiceOrderPanel({ service, listingId }: { service: ServiceContent; listingId?: string }) {
+export function ServiceOrderPanel({ service, listingId, email, signedIn = false }: { service: ServiceContent; listingId?: string; email?: string; signedIn?: boolean }) {
  const group = useId();
  const fixed = service.pricing === 'fixed';
  const packages = fixed ? service.packages ?? [] : [];
@@ -31,7 +31,9 @@ export function ServiceOrderPanel({ service, listingId }: { service: ServiceCont
   </>}
   <p>{fixed ? 'Lisa töö asukoht ja soovitud aeg. Ettevõtja kinnitab tellimissoovi.' : 'Kirjelda tööd. Ettevõtja saadab sulle hinna ja pakub sobiva aja.'}</p>
   {listingId && (!fixed || (selected ? packagePrice != null : service.priceCents !== null))
-   ? <a className="button" href={startInquiryHref('service', listingId, selected?.id)}>{label}<ArrowRight size={16} aria-hidden="true" /></a>
+   ? <InquiryContactActions portalHref={startInquiryHref('service', listingId, selected?.id)}
+      emailHref={inquiryEmailHref(email, service.title, selected ? `Pakett: ${selected.title}` : undefined)}
+      signedIn={signedIn} portalLabel={label} />
    : <button type="button" className="button" disabled>{label}</button>}
  </aside>;
 }

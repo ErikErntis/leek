@@ -2,7 +2,7 @@ import { MapPin } from 'lucide-react';
 import { companyDisplayName, getServiceAreas, getServicePriceLabel, type ServiceContent, type PublicService } from '@leek/contracts';
 import { ServiceOrderPanel } from './service-order-panel';
 
-export function ServiceDetail({ service, company, listingId, preview = false }: { service: ServiceContent; company: Pick<PublicService['company'], 'name'> & Partial<PublicService['company']>; listingId?: string; preview?: boolean }) {
+export function ServiceDetail({ service, company, listingId, signedIn = false, preview = false }: { service: ServiceContent; company: Pick<PublicService['company'], 'name'> & Partial<PublicService['company']>; listingId?: string; signedIn?: boolean; preview?: boolean }) {
  const Title = preview ? 'h2' : 'h1';
  const name = companyDisplayName(company);
 
@@ -25,7 +25,7 @@ export function ServiceDetail({ service, company, listingId, preview = false }: 
     <p>{service.description || 'Teenuse kirjeldus lisatakse siia.'}</p>
    </section>
   </article>
-  <ServiceOrderPanel service={service} listingId={listingId} />
+  <ServiceOrderPanel service={service} listingId={listingId} email={company.email} signedIn={signedIn} />
  </div>;
 }
 

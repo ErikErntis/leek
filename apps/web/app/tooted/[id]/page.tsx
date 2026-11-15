@@ -1,5 +1,6 @@
 import { companyDisplayName } from '@leek/contracts';
 import { ProductBuyPanel } from '../../../components/product-buy-panel';
+import { getSession } from '../../../lib/session';
 import { getPublicProduct } from '../../../lib/products';
 
 type Props = { params: Promise<{ id: string }> };
@@ -12,6 +13,7 @@ export async function generateMetadata({ params }: Props) {
 export default async function ProductPage({ params }: Props) {
  const product = await getPublicProduct((await params).id);
  const { content, company } = product;
+ const signedIn = !product.linked && !content.shopUrl && Boolean(await getSession().catch(() => null));
  return <div className="container service-page">
   <p className="service-breadcrumb"><a href="/tooted">Tooted</a> / {content.category}</p>
   <div className="service-detail-grid">
@@ -24,7 +26,7 @@ export default async function ProductPage({ params }: Props) {
     </div>}
     <section className="service-description"><h2>Toote kirjeldus</h2><p>{content.description}</p></section>
    </article>
-   <ProductBuyPanel product={product} />
+   <ProductBuyPanel product={product} signedIn={signedIn} />
   </div>
  </div>;
 }

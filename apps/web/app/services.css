@@ -18,6 +18,7 @@
 .service-price-panel { border-top: 4px solid var(--accent); }
 .service-price-panel h2 { margin: 0 0 10px; font-size: 23px; }
 .service-price-panel p { margin: 0 0 8px; }
+.inquiry-contact-actions .inquiry-signin-note { margin: 7px 0 4px; font-size: .875rem; }
 .service-price-panel .button { margin-top: 9px; width: 100%; text-align: center; }
 .service-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 12px; list-style: none; padding: 0; }
 .service-cards h3 { margin: 6px 0; overflow-wrap: anywhere; }
