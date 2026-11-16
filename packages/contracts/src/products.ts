@@ -5,6 +5,19 @@ export const productAvailability = { in_stock: 'Laos', on_order: 'Tellimisel', s
 export const shopPlatformSchema = z.enum(['shopify', 'woocommerce', 'wix']);
 export const productAvailabilitySchema = z.enum(['in_stock', 'on_order', 'sold_out']);
 export const productPriceSchema = z.number().int().min(0).max(100_000_000).nullable();
+const catalogPrice = z.string().regex(/^\d{1,7}(?:[.,]\d{1,2})?$/)
+ .transform(value => Math.round(Number(value.replace(',', '.')) * 100))
+ .pipe(productPriceSchema.unwrap());
+export const productCatalogFiltersSchema = z.object({
+ category: z.array(z.enum(productCategories)).max(productCategories.length).default([]),
+ availability: z.array(productAvailabilitySchema).max(3).default([]),
+ min: catalogPrice.optional(),
+ max: catalogPrice.optional(),
+ sort: z.enum(['recent', 'price-asc', 'price-desc', 'name']).default('recent'),
+}).refine(({ min, max }) => min === undefined || max === undefined || min <= max);
+export type ProductCatalogFilters = z.output<typeof productCatalogFiltersSchema>;
+export const productCatalogPageSize = 40;
+export type ProductCatalogCompany = { slug: string; name: string; brandName: string };
 export const localProductPhoto = /^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function publicHttpsUrl(value: string) {
  try {

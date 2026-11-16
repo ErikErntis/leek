@@ -202,10 +202,14 @@ test('product API publishes manual and imported products directly, syncs shops a
   const synced = await okay(await request(publicPath));
   assert.equal(synced.content.priceCents, 2250);
   assert.equal(synced.availability, 'sold_out');
+  const availableFromStore = await okay(await request('/v1/products?availability=sold_out&min=22.50&max=22.50'));
+  assert.deepEqual(availableFromStore.items.map((item: { id: string }) => item.id), [imported.id]);
   await db.update(schema.productListings).set({ syncedAt: new Date(0), attemptedAt: null }).where(eq(schema.productListings.id, imported.id));
   const stale = await okay(await request(publicPath));
   assert.equal(stale.content.priceCents, null);
   assert.equal(stale.availability, null);
+  assert.equal((await okay(await request('/v1/products?min=0'))).items.length, 0);
+  assert.equal((await okay(await request('/v1/products?availability=sold_out'))).items.length, 0);
   storeItem = null;
   await products.sync();
   assert.equal((await okay(await request(publicPath))).content.shopUrl, '');
@@ -218,6 +222,30 @@ test('product API publishes manual and imported products directly, syncs shops a
   const published = await okay(await request(ownerPath, { action: 'publish', id, version: manual.version, content }, owner.cookie));
   assert.equal((await request(photoPath)).status, 302);
   assert.equal((await okay(await request('/v1/products?q=l%C3%B5ikelaud&company=vello'))).items[0].id, id);
+  const variantId = randomUUID();
+  const variantContent: ProductContent = {
+   ...content, title: 'Teekruus', category: 'Käsitöö ja kingitused', priceCents: null, availability: 'on_order', photos: [],
+   variants: [
+    { id: randomUUID(), name: 'Suur', priceCents: 4000, availability: 'on_order' },
+    { id: randomUUID(), name: 'Väike', priceCents: 1200, availability: 'on_order' },
+   ],
+  };
+  await db.insert(schema.productListings).values({ id: variantId, companyId, content: variantContent, published: variantContent });
+  const filteredParams = new URLSearchParams({
+   availability: 'on_order', category: 'Käsitöö ja kingitused', min: '11,99', max: '12', includeCompanies: '1',
+  });
+  const filtered = await okay(await request(`/v1/products?${filteredParams}`));
+  assert.deepEqual(filtered.items.map((item: { id: string }) => item.id), [variantId]);
+  assert.deepEqual(filtered.companies.map((option: { slug: string }) => option.slug), ['vello']);
+  for (const [sort, expected] of [
+   ['price-asc', [variantId, id, imported.id]],
+   ['price-desc', [id, variantId, imported.id]],
+  ] as const) {
+   const sorted = await okay(await request(`/v1/products?sort=${sort}`));
+   assert.deepEqual(sorted.items.map((item: { id: string }) => item.id), expected);
+  }
+  assert.equal((await request('/v1/products?min=20&max=10')).status, 400);
+  assert.equal((await request('/v1/products?sort=unexpected')).status, 400);
   const updatedContent = { ...content, title: 'Uuendatud lõikelaud' };
   const savedDraft = await okay(await request(ownerPath, { action: 'draft', id, version: published.version, content: updatedContent }, owner.cookie));
   assert.equal((await okay(await request(`/v1/products/${id}`))).content.title, content.title);
@@ -238,6 +266,13 @@ test('product API publishes manual and imported products directly, syncs shops a
   assert.equal(bulk.items.length, 50);
   assert.equal((await okay(await request(ownerPath, { action: 'publish-imported', ids }, owner.cookie))).items.length, 0);
   assert.equal((await okay(await request(`/v1/products/${ids[0]}`))).content.title, drafts[0]!.content.title);
+  const firstPage = await okay(await request('/v1/products?q=Imporditud&sort=name'));
+  const nextPage = await okay(await request('/v1/products?q=Imporditud&sort=name&offset=40'));
+  assert.equal(firstPage.items.length, 40);
+  assert.equal(firstPage.hasMore, true);
+  assert.equal(nextPage.items.length, 10);
+  assert.equal(nextPage.hasMore, false);
+  assert.equal(new Set([...firstPage.items, ...nextPage.items].map(item => item.id)).size, 50);
   const helpId = randomUUID();
   const help = { action: 'help', id: helpId, shopUrl: 'https://vello.ee', email: 'kontakt@products.test', message: 'Vajan poe seadistamisel abi.' };
   await okay(await request(ownerPath, help, owner.cookie));

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
-import { localProductPhoto, productCategories, type CompanyProduct, type ProductHelpInput, type ProductSave, type PublicProduct, type ShopConnectionInput, type StoreProduct, type SyncedProduct } from '@leek/contracts';
+import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, lte, lt, ne, or, sql } from 'drizzle-orm';
+import { localProductPhoto, productCatalogPageSize, productCategories, type ProductCatalogFilters, type CompanyProduct, type ProductHelpInput, type ProductSave, type PublicProduct, type ShopConnectionInput, type StoreProduct, type SyncedProduct } from '@leek/contracts';
 import { companies, companyMedia, memberships, productHelpRequests, productListings, productShops, type createDatabase } from '@leek/db';
 import { CompanyError } from './company-service';
 import { normalizeShop, storeCatalog } from './store-catalog';
@@ -42,10 +42,12 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
   company: { name: companies.name, brandName: companies.brandName, slug: companies.slug, email: companies.email },
  }).from(productListings).innerJoin(companies, eq(companies.id, productListings.companyId));
 
- function toPublic({ item, company }: Awaited<ReturnType<typeof publicRows>>[number]): PublicProduct {
+ const publiclyListed = and(eq(productListings.visible, true), isNotNull(productListings.published));
+
+ function toPublic({ item, company }: Awaited<ReturnType<typeof publicRows>>[number], now = Date.now()): PublicProduct {
   const content = item.published!;
   if (!item.shopId) return { id: item.id, content, linked: false, fromPrice: false, availability: content.availability, company };
-  const fresh = item.syncedAt !== null && Date.now() - item.syncedAt.getTime() < priceFreshness;
+  const fresh = item.syncedAt !== null && now - item.syncedAt.getTime() < priceFreshness;
   return {
    id: item.id, linked: true, fromPrice: fresh && Boolean(item.storeData?.fromPrice),
    availability: fresh ? item.storeData?.availability ?? (item.syncedAt ? 'sold_out' : null) : null,
@@ -199,14 +201,47 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    return rows.map(companyProduct);
   },
 
-  async list(query: string, slug?: string, offset = 0) {
+  async list(query: string, slug?: string, offset = 0,
+   filters: ProductCatalogFilters = { category: [], availability: [], sort: 'recent' }, includeCompanies = false) {
+   const now = Date.now();
+   const fresh = sql`${productListings.syncedAt} > ${new Date(now - priceFreshness).toISOString()}::timestamptz`;
+   const published = productListings.published;
+   const effectivePrice = sql<number | null>`case
+    when ${productListings.shopId} is null then coalesce(
+     (select min((variant->>'priceCents')::integer) from jsonb_array_elements(${published}->'variants') as variant),
+     (${published}->>'priceCents')::integer
+    )
+    when ${fresh} then (${productListings.storeData}->>'priceCents')::integer
+   end`;
+   const effectiveAvailability = sql`case
+    when ${productListings.shopId} is null then ${published}->>'availability'
+    when ${fresh} then coalesce(${productListings.storeData}->>'availability', 'sold_out')
+   end`;
    const pattern = '%' + query.replace(/[\\%_]/g, '\\$&') + '%';
-   const rows = await publicRows().where(and(eq(companies.status, 'published'), eq(productListings.visible, true), isNotNull(productListings.published),
+   const primaryOrder = {
+    recent: desc(productListings.updatedAt),
+    'price-asc': sql`${effectivePrice} asc nulls last`,
+    'price-desc': sql`${effectivePrice} desc nulls last`,
+    name: asc(sql`lower(${published}->>'title')`),
+   }[filters.sort];
+   const rowsQuery = publicRows().where(and(eq(companies.status, 'published'), publiclyListed,
     slug ? eq(companies.slug, slug) : undefined,
-    query ? or(ilike(sql`${productListings.published}->>'title'`, pattern), ilike(sql`${productListings.published}->>'description'`, pattern),
-     ilike(sql`${productListings.published}->>'category'`, pattern), ilike(companies.name, pattern), ilike(companies.brandName, pattern)) : undefined,
-   )).orderBy(desc(productListings.updatedAt), desc(productListings.id)).offset(offset).limit(41);
-   return { items: rows.slice(0, 40).map(toPublic), hasMore: rows.length > 40 };
+    query ? or(ilike(sql`${published}->>'title'`, pattern), ilike(sql`${published}->>'description'`, pattern),
+     ilike(sql`${published}->>'category'`, pattern), ilike(companies.name, pattern), ilike(companies.brandName, pattern)) : undefined,
+    filters.category.length ? inArray(sql`${published}->>'category'`, filters.category) : undefined,
+    filters.availability.length ? inArray(effectiveAvailability, filters.availability) : undefined,
+    filters.min === undefined ? undefined : gte(effectivePrice, filters.min),
+    filters.max === undefined ? undefined : lte(effectivePrice, filters.max),
+   )).orderBy(primaryOrder, desc(productListings.id)).offset(offset).limit(productCatalogPageSize + 1);
+   const companyQuery = includeCompanies ? db.select({ slug: companies.slug, name: companies.name, brandName: companies.brandName })
+    .from(companies).where(and(eq(companies.status, 'published'), exists(db.select({ id: productListings.id })
+     .from(productListings).where(and(eq(productListings.companyId, companies.id), publiclyListed))))) : undefined;
+   const [rows, catalogCompanies] = await Promise.all([rowsQuery, companyQuery]);
+   return {
+    items: rows.slice(0, productCatalogPageSize).map(row => toPublic(row, now)),
+    hasMore: rows.length > productCatalogPageSize,
+    ...(catalogCompanies ? { companies: catalogCompanies } : {}),
+   };
   },
 
   async detail(id: string) {
