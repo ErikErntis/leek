@@ -92,6 +92,8 @@ test('service listings preserve the approved version, enforce ownership and prot
   assert.equal((await request(photoPath)).status, 302);
   const catalog = await successful(await request('/v1/services?q=m%C3%B6%C3%B6bli&company=vello'));
   assert.deepEqual(catalog.items.map((item: { id: string }) => item.id), [id]);
+  const legacyFilter = new URLSearchParams({ area: 'Lääne-Harju vald', min: '60', max: '60' });
+  assert.deepEqual((await successful(await request(`/v1/services?${legacyFilter}`))).items.map((item: { id: string }) => item.id), [id]);
   const changed = await successful(await request(ownerPath, {
    ...create, version: approved.version, action: 'submit', content: { ...content, title: 'Uus nimetus' },
   }, owner.cookie));
@@ -132,6 +134,46 @@ test('service listings preserve the approved version, enforce ownership and prot
   assert.deepEqual(matches.items[0].packages, packaged.packages);
   assert.deepEqual(getServiceAreas(matches.items[0]), packaged.areas);
   assert.match(getServicePriceLabel(matches.items[0]), /^Alates 60/);
+  const quoteId = randomUUID();
+  const fixedId = randomUUID();
+  const quote = { ...content, title: 'Nõustamine', category: 'Muud teenused', pricing: 'quote', priceCents: null, photo: '' } satisfies ServiceContent;
+  const fixed = { ...content, title: 'Eraldi paigaldus', priceCents: 12500, photo: '' };
+  await db.insert(schema.serviceListings).values([
+   { id: quoteId, companyId, content: quote, published: quote },
+   { id: fixedId, companyId, content: fixed, published: fixed },
+  ]);
+  const criteria = new URLSearchParams({
+   category: content.category, area: 'Keila linn', pricing: 'fixed', min: '59,99', max: '60', company: 'vello', includeCompanies: '1',
+  });
+  criteria.append('area', 'Harku vald');
+  const filtered = await successful(await request(`/v1/services?${criteria}`));
+  assert.deepEqual(filtered.items.map((item: { id: string }) => item.id), [id]);
+  assert.deepEqual(filtered.companies.map((option: { slug: string }) => option.slug), ['vello']);
+  const quoteOnly = await successful(await request('/v1/services?pricing=quote'));
+  assert.deepEqual(quoteOnly.items.map((item: { id: string }) => item.id), [quoteId]);
+  assert.equal((await successful(await request('/v1/services?pricing=quote&max=100'))).items.length, 0);
+  for (const [sort, expected] of [
+   ['price-asc', [id, fixedId, quoteId]], ['price-desc', [fixedId, id, quoteId]], ['name', [fixedId, id, quoteId]],
+  ] as const) {
+   const sorted = await successful(await request(`/v1/services?sort=${sort}`));
+   assert.deepEqual(sorted.items.map((item: { id: string }) => item.id), expected);
+  }
+  for (const invalid of ['area=Tallinn', 'min=100&max=10', 'pricing=unknown', 'sort=unknown']) {
+   assert.equal((await request(`/v1/services?${invalid}`)).status, 400);
+  }
+  await db.insert(schema.serviceListings).values(Array.from({ length: 42 }, (_, index) => {
+   const entry: ServiceContent = { ...fixed, title: 'Mõõdistus', area: index === 0 ? 'Harku vald' : 'Haapsalu linn', priceCents: 1000 + index };
+   return { id: randomUUID(), companyId, content: entry, published: entry };
+  }));
+  const pageQuery = new URLSearchParams({ q: 'Mõõdistus', area: 'Haapsalu linn', sort: 'price-asc' });
+  const firstPage = await successful(await request(`/v1/services?${pageQuery}`));
+  const secondPage = await successful(await request(`/v1/services?${pageQuery}&offset=40`));
+  assert.equal(firstPage.hasMore, true);
+  assert.equal(secondPage.hasMore, false);
+  assert.equal(firstPage.items.length, 40);
+  assert.equal(secondPage.items.length, 1);
+  assert.equal(firstPage.items[0].priceCents, 1001);
+  assert.equal(secondPage.items[0].priceCents, 1041);
  } finally {
   await client.close();
  }

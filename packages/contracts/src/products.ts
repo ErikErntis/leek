@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { catalogPageSize, catalogPriceRangeSchema, catalogSortSchema, type CatalogCompany } from './catalog';
 
 export const productCategories = ['Kodu ja sisustus', 'Toit ja jook', 'Aed ja õu', 'Käsitöö ja kingitused', 'Rõivad ja aksessuaarid', 'Muud tooted'] as const;
 export const productAvailability = { in_stock: 'Laos', on_order: 'Tellimisel', sold_out: 'Otsas' } as const;
@@ -12,19 +13,14 @@ export const productCategoryCreateSchema = z.object({
  name: productCategoryNameSchema.transform(name => name.replace(/\s+/gu, ' ')),
 }).strict();
 
-const catalogPrice = z.string().regex(/^\d{1,7}(?:[.,]\d{1,2})?$/)
- .transform(value => Math.round(Number(value.replace(',', '.')) * 100))
- .pipe(productPriceSchema.unwrap());
-export const productCatalogFiltersSchema = z.object({
+export const productCatalogFiltersSchema = catalogPriceRangeSchema.safeExtend({
  category: z.array(productCategoryNameSchema).default([]),
  availability: z.array(productAvailabilitySchema).max(3).default([]),
- min: catalogPrice.optional(),
- max: catalogPrice.optional(),
- sort: z.enum(['recent', 'price-asc', 'price-desc', 'name']).default('recent'),
-}).refine(({ min, max }) => min === undefined || max === undefined || min <= max);
+ sort: catalogSortSchema.default('recent'),
+});
 export type ProductCatalogFilters = z.output<typeof productCatalogFiltersSchema>;
-export const productCatalogPageSize = 40;
-export type ProductCatalogCompany = { slug: string; name: string; brandName: string };
+export const productCatalogPageSize = catalogPageSize;
+export type ProductCatalogCompany = CatalogCompany;
 export const localProductPhoto = /^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function publicHttpsUrl(value: string) {
  try {

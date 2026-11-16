@@ -2,9 +2,9 @@ import { Search, SlidersHorizontal } from 'lucide-react';
 import { companyDisplayName, formatServicePrice, productAvailability, productCatalogFiltersSchema,
  productCatalogPageSize, productCategories, productCategoryNameSchema, type ProductAvailability } from '@leek/contracts';
 import { ProductCards } from '../../components/product-cards';
-import { ProductCatalogSort, ProductFiltersPanel } from '../../components/product-catalog-controls';
+import { CatalogSortControl, CatalogFiltersPanel } from '../../components/catalog-controls';
 import { getPublicProducts } from '../../lib/products';
-import './catalog.css';
+import '../catalog.css';
 
 export const metadata = { title: 'Tooted' };
 type Params = Record<string, string | string[] | undefined>;
@@ -60,7 +60,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
  if (validated.success && validated.data.min !== undefined) chips.push({ key: 'min', value: min, label: `Alates ${formatServicePrice(validated.data.min)}` });
  if (validated.success && validated.data.max !== undefined) chips.push({ key: 'max', value: max, label: `Kuni ${formatServicePrice(validated.data.max)}` });
 
- return <div className="container service-page product-catalog">
+ return <div className="container service-page listing-catalog">
   <h1>Tooted</h1>
   <form action="/tooted" method="get" key={`${active}:${min}:${max}`}>
    <div className="catalog-search" role="search">
@@ -71,7 +71,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
     <button className="button" type="submit">Otsi</button>
    </div>
    <div className="catalog-layout">
-    <ProductFiltersPanel count={chips.length}>
+    <CatalogFiltersPanel count={chips.length} label="Tootefiltrid" invalidPrice={!validated.success}>
      <div className="catalog-filter-heading">
       <h2><SlidersHorizontal size={17} aria-hidden="true" /> Filtrid</h2>
       {(chips.length > 0 || !validated.success) && <a className="text-link" href={catalogHref(reset)}>Tühjenda</a>}
@@ -104,12 +104,12 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       </select>
      </label>
      <button className="button secondary catalog-apply" type="submit">Rakenda filtrid</button>
-    </ProductFiltersPanel>
+    </CatalogFiltersPanel>
 
     <section className="catalog-results" aria-label="Otsingutulemused">
      <div className="catalog-toolbar">
       <p>{items.length ? `Tooted ${offset + 1}–${offset + items.length}` : '0 toodet'}</p>
-      <ProductCatalogSort value={sort} />
+      <CatalogSortControl value={sort} />
      </div>
      {chips.length > 0 && <ul className="catalog-chips" aria-label="Aktiivsed filtrid">
       {chips.map(({ key, value, label }) => {

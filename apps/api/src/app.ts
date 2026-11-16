@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { bodyLimit } from 'hono/body-limit';
-import { companySchema, publicProjection, productCatalogFiltersSchema, directoryQuerySchema, filterCompanies, type PublicData } from '@leek/contracts';
+import { companySchema, publicProjection, productCatalogFiltersSchema, serviceCatalogFiltersSchema, directoryQuerySchema, filterCompanies, type PublicData } from '@leek/contracts';
 export type Repository = { readPublic: () => Promise<PublicData>; check: () => Promise<void> };
 import type { createAuth } from '@leek/auth/server';
 import { companyRoutes } from './company-routes';
@@ -49,10 +49,18 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
   const query = (c.req.query('q') ?? '').trim();
   const slug = c.req.query('company');
   const offset = Number(c.req.query('offset') ?? 0);
-  if (query.length > 120 || (slug && slug.length > 160) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) {
+  const filters = serviceCatalogFiltersSchema.safeParse({
+   category: c.req.queries('category'),
+   area: c.req.queries('area'),
+   pricing: c.req.query('pricing') || undefined,
+   min: c.req.query('min') || undefined,
+   max: c.req.query('max') || undefined,
+   sort: c.req.query('sort') || undefined,
+  });
+  if (!filters.success || query.length > 120 || (slug && slug.length > 160) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) {
    return c.json({ error: 'Vigased otsinguparameetrid.' }, 400);
   }
-  return c.json(listings ? await listings.list(query, slug, offset) : { items: [], hasMore: false });
+  return c.json(listings ? await listings.list(query, slug, offset, filters.data, c.req.query('includeCompanies') === '1') : { items: [], hasMore: false });
  });
  app.get('/v1/services/:id', async c => {
   const id = c.req.param('id');

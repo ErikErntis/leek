@@ -1,7 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import type { CompanyService, PublicService } from '@leek/contracts';
+import type { CatalogCompany, CompanyService, PublicService } from '@leek/contracts';
 import { apiURL } from './portal';
 
 export async function getOwnServices(companyId: string): Promise<CompanyService[]> {
@@ -13,9 +13,13 @@ export async function getOwnServices(companyId: string): Promise<CompanyService[
  return (await response.json()).items;
 }
 
-export async function getPublicServices(query = '', company = '', offset = 0): Promise<{ items: PublicService[]; hasMore: boolean }> {
+export async function getPublicServices(query = '', company = '', offset = 0, filters?: URLSearchParams): Promise<{ items: PublicService[]; hasMore: boolean; companies?: CatalogCompany[] }> {
  if (process.env.DEMO_MODE === 'true') return { items: [], hasMore: false };
- const params = new URLSearchParams({ q: query, company, offset: String(offset) });
+ const params = new URLSearchParams(filters);
+ params.set('q', query);
+ params.set('company', company);
+ params.set('offset', String(offset));
+ if (filters) params.set('includeCompanies', '1');
  const response = await fetch(apiURL(`/v1/services?${params}`), { cache: 'no-store', signal: AbortSignal.timeout(8000) });
  if (!response.ok) throw new Error('Teenuseid ei saanud laadida.');
  return response.json();

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { catalogPriceRangeSchema, catalogSortSchema } from './catalog';
 export const planSchema = z.enum(['free', 'visibility', 'employer']);
 export type Plan = z.infer<typeof planSchema>;
 export const companySchema = z.object({
@@ -97,6 +98,15 @@ export function companyDisplayName(company: { name: string; brandName?: string }
 }
 
 export const serviceCategories = ['Mööbel ja sisustus', 'Remont ja ehitus', 'Kodu ja aed', 'Muud teenused'] as const;
+export const servicePricingLabels = { fixed: 'Kindel hind', quote: 'Pakkumise alusel' } as const;
+const servicePricingSchema = z.enum(['quote', 'fixed']);
+export const serviceCatalogFiltersSchema = catalogPriceRangeSchema.safeExtend({
+ category: z.array(z.enum(serviceCategories)).max(serviceCategories.length).default([]),
+ area: z.array(z.enum(municipalities)).max(municipalities.length).default([]),
+ pricing: servicePricingSchema.optional(),
+ sort: catalogSortSchema.default('recent'),
+});
+export type ServiceCatalogFilters = z.output<typeof serviceCatalogFiltersSchema>;
 export const maxServicePackages = 5;
 export const maxServicePriceCents = 100_000_000;
 const servicePackageSchema = z.object({
@@ -113,7 +123,7 @@ export const serviceContentSchema = z.object({
  area: z.enum(municipalities),
  areas: z.array(z.enum(municipalities)).min(1).max(municipalities.length).optional(),
  description: z.string().trim().max(1000),
- pricing: z.enum(['quote', 'fixed']),
+ pricing: servicePricingSchema,
  priceCents: z.number().int().min(1).max(maxServicePriceCents).nullable(),
  packages: z.array(servicePackageSchema).max(maxServicePackages).optional(),
  photo: z.union([z.literal(''), z.string().regex(/^\/api\/media\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i)]),
@@ -163,6 +173,7 @@ export function getServicePriceLabel(service: Pick<ServiceContent, 'pricing' | '
  return service.priceCents === null ? 'Hind määramata' : formatServicePrice(service.priceCents);
 }
 
+export * from "./catalog";
 export * from "./products";
 
 export * from "./inquiries";
