@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import type { CompanyProduct, ProductCatalogCompany, ProductShop, PublicProduct } from '@leek/contracts';
 import { apiURL } from './portal';
 
-export async function getOwnProducts(companyId: string): Promise<{ items: CompanyProduct[]; shops: ProductShop[] }> {
+export async function getOwnProducts(companyId: string): Promise<{ items: CompanyProduct[]; shops: ProductShop[]; categories?: string[] }> {
  const response = await fetch(apiURL(`/v1/my/companies/${companyId}/products`), {
   headers: { cookie: (await cookies()).toString() }, cache: 'no-store', signal: AbortSignal.timeout(10000),
  });
@@ -12,7 +12,7 @@ export async function getOwnProducts(companyId: string): Promise<{ items: Compan
  if (!response.ok) throw new Error('Tooteid ei saanud laadida.');
  return response.json();
 }
-export async function getPublicProducts(query = '', company = '', offset = 0, filters?: URLSearchParams): Promise<{ items: PublicProduct[]; hasMore: boolean; companies?: ProductCatalogCompany[] }> {
+export async function getPublicProducts(query = '', company = '', offset = 0, filters?: URLSearchParams): Promise<{ items: PublicProduct[]; hasMore: boolean; companies?: ProductCatalogCompany[]; categories?: string[] }> {
  if (process.env.DEMO_MODE === 'true') return { items: [], hasMore: false };
  const params = new URLSearchParams(filters);
  params.set('q', query);

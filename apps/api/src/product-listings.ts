@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, lte, lt, ne, or, sql } from 'drizzle-orm';
 import { localProductPhoto, productCatalogPageSize, productCategories, type ProductCatalogFilters, type CompanyProduct, type ProductHelpInput, type ProductSave, type PublicProduct, type ShopConnectionInput, type StoreProduct, type SyncedProduct } from '@leek/contracts';
-import { companies, companyMedia, memberships, productHelpRequests, productListings, productShops, type createDatabase } from '@leek/db';
+import { companies, companyMedia, customProductCategories, memberships, productHelpRequests, productListings, productShops, type createDatabase } from '@leek/db';
 import { CompanyError } from './company-service';
 import { normalizeShop, storeCatalog } from './store-catalog';
 import { decryptWixKey, encryptWixKey } from './wix-credentials';
@@ -56,14 +56,33 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
   };
  }
 
+ async function categories() {
+  const rows = await db.select({ name: customProductCategories.name }).from(customProductCategories);
+  return [...productCategories, ...rows.map(({ name }) => name).sort((a, b) => a.localeCompare(b, 'et'))];
+ }
+
+ const categoryKey = (name: string) => name.toLocaleLowerCase('et').normalize();
+
  return {
+  categories,
+  async createCategory(name: string) {
+   const nameKey = categoryKey(name);
+   if (productCategories.some(category => categoryKey(category) === nameKey)) {
+    throw new CompanyError(409, 'Selline tootekategooria on juba olemas.');
+   }
+   const [category] = await db.insert(customProductCategories).values({ nameKey, name })
+    .onConflictDoNothing().returning({ name: customProductCategories.name });
+   if (!category) throw new CompanyError(409, 'Selline tootekategooria on juba olemas.');
+   return category;
+  },
   async own(userId: string, companyId: string) {
    await ownerCompany(userId, companyId);
-   const [items, shops] = await Promise.all([
+   const [items, shops, availableCategories] = await Promise.all([
     db.select().from(productListings).where(eq(productListings.companyId, companyId)).orderBy(desc(productListings.updatedAt)),
     db.select({ id: productShops.id, platform: productShops.platform, url: productShops.url }).from(productShops).where(eq(productShops.companyId, companyId)).orderBy(productShops.url),
+    categories(),
    ]);
-   return { items: items.map(companyProduct), shops };
+   return { items: items.map(companyProduct), shops, categories: availableCategories };
   },
 
   async save(userId: string, companyId: string, input: ProductSave) {
@@ -82,6 +101,11 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
    }
 
    if (!content) throw new CompanyError(400, 'Lisa toote andmed.');
+   if (!productCategories.some(category => category === content.category)) {
+    const [category] = await db.select({ name: customProductCategories.name }).from(customProductCategories)
+     .where(eq(customProductCategories.nameKey, categoryKey(content.category)));
+    if (category?.name !== content.category) throw new CompanyError(400, 'Vali olemasolev tootekategooria.');
+   }
    if (current?.shopId && (content.priceCents !== current.content.priceCents || content.shopUrl !== current.content.shopUrl ||
     content.availability !== current.content.availability || content.variants.length)) {
     throw new CompanyError(400, 'Lingitud toote hinna ja saadavuse saad muuta e-poes.');
@@ -202,7 +226,7 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
   },
 
   async list(query: string, slug?: string, offset = 0,
-   filters: ProductCatalogFilters = { category: [], availability: [], sort: 'recent' }, includeCompanies = false) {
+   filters: ProductCatalogFilters = { category: [], availability: [], sort: 'recent' }, includeCatalogOptions = false) {
    const now = Date.now();
    const fresh = sql`${productListings.syncedAt} > ${new Date(now - priceFreshness).toISOString()}::timestamptz`;
    const published = productListings.published;
@@ -233,14 +257,16 @@ export function createProductListings(db: Database, catalog = storeCatalog) {
     filters.min === undefined ? undefined : gte(effectivePrice, filters.min),
     filters.max === undefined ? undefined : lte(effectivePrice, filters.max),
    )).orderBy(primaryOrder, desc(productListings.id)).offset(offset).limit(productCatalogPageSize + 1);
-   const companyQuery = includeCompanies ? db.select({ slug: companies.slug, name: companies.name, brandName: companies.brandName })
+   const companyQuery = includeCatalogOptions ? db.select({ slug: companies.slug, name: companies.name, brandName: companies.brandName })
     .from(companies).where(and(eq(companies.status, 'published'), exists(db.select({ id: productListings.id })
      .from(productListings).where(and(eq(productListings.companyId, companies.id), publiclyListed))))) : undefined;
-   const [rows, catalogCompanies] = await Promise.all([rowsQuery, companyQuery]);
+   const [rows, catalogCompanies, catalogCategories] = await Promise.all([
+    rowsQuery, companyQuery, includeCatalogOptions ? categories() : undefined,
+   ]);
    return {
     items: rows.slice(0, productCatalogPageSize).map(row => toPublic(row, now)),
     hasMore: rows.length > productCatalogPageSize,
-    ...(catalogCompanies ? { companies: catalogCompanies } : {}),
+    ...(catalogCompanies ? { companies: catalogCompanies, categories: catalogCategories } : {}),
    };
   },
 

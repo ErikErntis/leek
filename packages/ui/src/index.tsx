@@ -220,7 +220,7 @@ const adminNav = [
   ['Sisu ülevaatus', '/ulevaatus', ShieldCheck],
   ['Profiilimuudatused', '/profiilimuudatused', FileText],
   ['Teenuste ülevaatus', '/teenused', FileText],
-  ['E-poe liidestusabi', '/tooted', FileText],
+  ['Tooted', '/tooted', FileText],
   ['Paketid', '/paketid', Layers],
 ] as const;
 

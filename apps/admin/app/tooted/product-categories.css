@@ -1,0 +1,8 @@
+.product-category-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.product-category-form label { display: grid; gap: 5px; width: min(100%, 320px); font-weight: 600; }
+.product-category-form input {
+ width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+ background: var(--paper); color: var(--ink); font: inherit;
+}
+.product-category-list { list-style: none; padding: 0; margin: 14px 0 0; }
+.product-category-list li { max-width: 100%; overflow-wrap: anywhere; }

@@ -55,6 +55,9 @@ ALTER TABLE product_shops ADD COLUMN IF NOT EXISTS wix_api_key text;
 ALTER TABLE product_shops DROP CONSTRAINT IF EXISTS product_shops_platform_check;
 ALTER TABLE product_shops ADD CONSTRAINT product_shops_platform_check CHECK(platform IN ('shopify','woocommerce','wix'));
 CREATE UNIQUE INDEX IF NOT EXISTS product_shops_company_url_idx ON product_shops(company_id,platform,url);
+CREATE TABLE IF NOT EXISTS custom_product_categories (
+ name_key text PRIMARY KEY, name text NOT NULL
+);
 CREATE TABLE IF NOT EXISTS product_listings (
  id uuid PRIMARY KEY, company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
  shop_id uuid REFERENCES product_shops(id) ON DELETE CASCADE, source_id text,

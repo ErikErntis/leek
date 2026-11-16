@@ -30,7 +30,7 @@ function Availability({ value, onChange }: { value: ProductContent['availability
  </select></label>;
 }
 
-export function ProductPortal({ company, initial }: { company: PortalCompany; initial: { items: CompanyProduct[]; shops: ProductShop[] } }) {
+export function ProductPortal({ company, initial }: { company: PortalCompany; initial: { items: CompanyProduct[]; shops: ProductShop[]; categories?: string[] } }) {
  const [mode, setMode] = useState<'list' | 'manual' | 'store' | 'help'>('list');
  const [items, setItems] = useState(initial.items);
  const [shops, setShops] = useState(initial.shops);
@@ -51,6 +51,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
  const working = useRef(false);
  const photoInput = useRef<HTMLInputElement>(null);
 
+ const categories = initial.categories ?? productCategories;
  const current = items.find(item => item.id === selected?.id);
  const linked = Boolean(current?.shopId);
  const canPublish = company.status === 'published';
@@ -195,7 +196,7 @@ export function ProductPortal({ company, initial }: { company: PortalCompany; in
      <fieldset className="profile-edit-card service-fields" disabled={busy}>
       <legend>Toote andmed</legend>
       <label>Toote nimi<input value={content.title} maxLength={120} onChange={event => change('title', event.target.value)} /></label>
-      <label>Kategooria<select value={content.category} onChange={event => change('category', event.target.value as ProductContent['category'])}>{productCategories.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label>Kategooria<select value={content.category} onChange={event => change('category', event.target.value)}>{categories.map(item => <option key={item}>{item}</option>)}</select></label>
       <label>Kirjeldus<textarea value={content.description} rows={5} maxLength={2000} onChange={event => change('description', event.target.value)} /></label>
      </fieldset>
      <fieldset className="profile-edit-card service-fields" disabled={busy}>

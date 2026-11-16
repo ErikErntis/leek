@@ -1,7 +1,7 @@
 import { inquiryActionSchema, inquiryCreateSchema } from '@leek/contracts';
 import type { createInquiries } from './inquiries';
 import type { createProductListings } from './product-listings';
-import { productActionSchema } from '@leek/contracts';
+import { productActionSchema, productCategoryCreateSchema } from '@leek/contracts';
 import type { createServiceListings } from './service-listings';
 import { serviceSaveSchema } from '@leek/contracts';
 import type { createProfileService } from './company-profile';
@@ -177,7 +177,14 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
   });
   routes.get('/v1/admin/products', async c => {
     if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
-    return c.json({ items: [], requests: await products.helpQueue() });
+    const [requests, categories] = await Promise.all([products.helpQueue(), products.categories()]);
+    return c.json({ items: [], requests, categories });
+  });
+  routes.post('/v1/admin/product-categories', async c => {
+    if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);
+    const input = productCategoryCreateSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: 'Sisesta korrektne kategooria nimi.' }, 400);
+    return c.json(await products.createCategory(input.data.name), 201);
   });
   routes.post('/v1/admin/product-help/:id/resolve', async c => {
     if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);

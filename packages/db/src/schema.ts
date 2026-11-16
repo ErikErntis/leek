@@ -89,6 +89,11 @@ export const productShops = pgTable('product_shops', {
  wixApiKey: text('wix_api_key'),
 }, table => [uniqueIndex('product_shops_company_url_idx').on(table.companyId, table.platform, table.url)]);
 
+export const customProductCategories = pgTable('custom_product_categories', {
+ nameKey: text('name_key').primaryKey(),
+ name: text().notNull(),
+});
+
 export const productListings = pgTable('product_listings', {
  id: uuid().primaryKey(),
  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),

@@ -123,6 +123,7 @@ test('product API publishes manual and imported products directly, syncs shops a
    )
   `);
   await client.exec(billingMigration);
+  await client.exec(await readFile(new URL('../../../packages/db/migrations/0003_product_categories.sql', import.meta.url), 'utf8'));
   await client.exec(billingMigration);
   const db = drizzle(client, { schema }) as unknown as Parameters<typeof createAuth>[0];
   const origins = ['https://web.test', 'https://admin.test'];
@@ -169,6 +170,21 @@ test('product API publishes manual and imported products directly, syncs shops a
   const photoPath = `/v1/media/${photo!.id}`;
   const ownerPath = `/v1/my/companies/${companyId}/products`;
   const adminPath = '/v1/admin/products';
+  const categoryPath = '/v1/admin/product-categories';
+  assert.equal((await request(categoryPath, { name: 'Keraamika' })).status, 401);
+  assert.equal((await request(categoryPath, { name: 'Keraamika' }, owner.cookie)).status, 403);
+  assert.equal((await request(categoryPath, { name: 'Keraamika' }, admin.cookie, 'https://foreign.test')).status, 403);
+  assert.equal((await request(categoryPath, { name: '   ' }, admin.cookie, origins[1])).status, 400);
+  assert.equal((await request(categoryPath, { name: 'toit ja JOOK' }, admin.cookie, origins[1])).status, 409);
+  const categoryResponses = await Promise.all([
+   request(categoryPath, { name: '  Stuudio  keraamika  ' }, admin.cookie, origins[1]),
+   request(categoryPath, { name: '  Stuudio  keraamika  ' }, admin.cookie, origins[1]),
+  ]);
+  assert.deepEqual(categoryResponses.map(response => response.status).sort(), [201, 409]);
+  assert.equal((await request(categoryPath, { name: 'STUUDIO KERAAMIKA' }, admin.cookie, origins[1])).status, 409);
+  const customCategory = 'Stuudio keraamika';
+  assert.ok((await okay(await request(adminPath, undefined, admin.cookie, origins[1]))).categories.includes(customCategory));
+  assert.ok((await okay(await request(ownerPath, undefined, owner.cookie))).categories.includes(customCategory));
   const catalog = { action: 'catalog', connection: { platform: 'woocommerce', url: 'https://vello.ee' }, cursor: null };
   assert.equal((await request(ownerPath, catalog, outsider.cookie)).status, 404);
   assert.equal((await request(ownerPath, catalog, owner.cookie, 'https://foreign.test')).status, 403);
@@ -224,18 +240,23 @@ test('product API publishes manual and imported products directly, syncs shops a
   assert.equal((await okay(await request('/v1/products?q=l%C3%B5ikelaud&company=vello'))).items[0].id, id);
   const variantId = randomUUID();
   const variantContent: ProductContent = {
-   ...content, title: 'Teekruus', category: 'Käsitöö ja kingitused', priceCents: null, availability: 'on_order', photos: [],
+   ...content, title: 'Teekruus', category: customCategory, priceCents: null, availability: 'on_order', photos: [],
    variants: [
     { id: randomUUID(), name: 'Suur', priceCents: 4000, availability: 'on_order' },
     { id: randomUUID(), name: 'Väike', priceCents: 1200, availability: 'on_order' },
    ],
   };
-  await db.insert(schema.productListings).values({ id: variantId, companyId, content: variantContent, published: variantContent });
+  const publishVariant = { action: 'publish', id: variantId, version: null, content: variantContent };
+  const invalidCategory = { ...publishVariant, content: { ...variantContent, category: 'Registreerimata kategooria' } };
+  assert.equal((await request(ownerPath, invalidCategory, owner.cookie)).status, 400);
+  await okay(await request(ownerPath, publishVariant, owner.cookie));
   const filteredParams = new URLSearchParams({
-   availability: 'on_order', category: 'Käsitöö ja kingitused', min: '11,99', max: '12', includeCompanies: '1',
+   availability: 'on_order', category: customCategory, min: '11,99', max: '12', includeCompanies: '1',
   });
   const filtered = await okay(await request(`/v1/products?${filteredParams}`));
   assert.deepEqual(filtered.items.map((item: { id: string }) => item.id), [variantId]);
+  assert.ok(filtered.categories.includes(customCategory));
+  assert.ok(filtered.categories.includes('Kodu ja sisustus'));
   assert.deepEqual(filtered.companies.map((option: { slug: string }) => option.slug), ['vello']);
   for (const [sort, expected] of [
    ['price-asc', [variantId, id, imported.id]],

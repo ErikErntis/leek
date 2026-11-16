@@ -1,10 +1,12 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { WorkspaceShell } from '@leek/ui';
-import type { ProductHelp } from '@leek/contracts';
+import { productCategories, productCategoryCreateSchema, productCategoryMaxLength, type ProductHelp } from '@leek/contracts';
+
+import './product-categories.css';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'E-poe liidestusabi', robots: { index: false, follow: false } };
+export const metadata = { title: 'Tooted', robots: { index: false, follow: false } };
 
 async function api(path: string, body?: unknown) {
  const response = await fetch(new URL(path, process.env.API_URL), {
@@ -27,14 +29,35 @@ async function closeHelp(form: FormData) {
  redirect(response.ok ? '/tooted?done=1' : '/tooted?failed=1');
 }
 
+async function createCategory(form: FormData) {
+ 'use server';
+ const input = productCategoryCreateSchema.safeParse({ name: form.get('name') });
+ if (!input.success) redirect('/tooted?category=invalid');
+ const response = await api('/v1/admin/product-categories', input.data);
+ if (response.status === 409) redirect('/tooted?category=duplicate');
+ redirect(response.ok ? '/tooted?category=created' : '/tooted?category=failed');
+}
+
 export default async function ProductsAdmin({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
  const [query, response] = await Promise.all([searchParams, api('/v1/admin/products')]);
  if (!response.ok) throw new Error('Toodete järjekorda ei saanud laadida.');
- const { requests } = await response.json() as { requests: ProductHelp[] };
+ const { requests, categories = productCategories } = await response.json() as { requests: ProductHelp[]; categories?: string[] };
  return <WorkspaceShell kind="admin" active="/tooted" demo={false} siteUrl={process.env.SITE_URL}>
-  <div className="workspace-heading"><div><h1>E-poe liidestusabi</h1></div></div>
+  <div className="workspace-heading"><div><h1>Tooted</h1></div></div>
   {query.done && <p role="status">Muudatus on salvestatud.</p>}
   {query.failed && <p role="alert">Salvestamine ebaõnnestus. Proovi uuesti.</p>}
+  <section className="panel" aria-labelledby="product-categories-heading">
+   <h2 id="product-categories-heading">Tootekategooriad</h2>
+   <form action={createCategory} className="product-category-form">
+    <label>Kategooria nimi<input name="name" maxLength={productCategoryMaxLength} required /></label>
+    <button className="button" type="submit">Lisa kategooria</button>
+   </form>
+   {query.category === 'created' && <p role="status">Kategooria lisatud.</p>}
+   {query.category === 'invalid' && <p role="alert">Sisesta korrektne kategooria nimi.</p>}
+   {query.category === 'duplicate' && <p role="alert">Selline tootekategooria on juba olemas.</p>}
+   {query.category === 'failed' && <p role="alert">Kategooria salvestamine ebaõnnestus. Proovi uuesti.</p>}
+   <ul className="chips product-category-list">{categories.map(name => <li className="chip" key={name}>{name}</li>)}</ul>
+  </section>
   <h2>Tasulise liidestusabi päringud</h2>
   {!requests.length && <section className="panel"><p>Avatud abipäringuid pole.</p></section>}
   {requests.map(item => <section className="panel" key={item.id} style={{ marginBottom: 18 }}>

@@ -1,6 +1,6 @@
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { companyDisplayName, formatServicePrice, productAvailability, productCatalogFiltersSchema,
- productCatalogPageSize, productCategories, type ProductAvailability } from '@leek/contracts';
+ productCatalogPageSize, productCategories, productCategoryNameSchema, type ProductAvailability } from '@leek/contracts';
 import { ProductCards } from '../../components/product-cards';
 import { ProductCatalogSort, ProductFiltersPanel } from '../../components/product-catalog-controls';
 import { getPublicProducts } from '../../lib/products';
@@ -21,7 +21,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
  const company = first(params.company).slice(0, 160);
  const rawOffset = Number(first(params.offset));
  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 && rawOffset <= 100000 ? rawOffset : 0;
- const category = productCategories.filter(value => many(params.category).includes(value));
+ const category = [...new Set(many(params.category).flatMap(value => {
+  const parsed = productCategoryNameSchema.safeParse(value);
+  return parsed.success ? [parsed.data] : [];
+ }))];
  const availability = (Object.keys(productAvailability) as ProductAvailability[]).filter(value => many(params.availability).includes(value));
  const rawSort = first(params.sort);
  const sort = rawSort === 'price-asc' || rawSort === 'price-desc' || rawSort === 'name' ? rawSort : 'recent';
@@ -38,7 +41,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   if (min) active.set('min', min);
   if (max) active.set('max', max);
  }
- const { items, hasMore, companies = [] } = await getPublicProducts(query, company, offset, active);
+ const { items, hasMore, companies = [], categories = productCategories } = await getPublicProducts(query, company, offset, active);
  const companyOptions = [...companies].sort((a, b) => companyDisplayName(a).localeCompare(companyDisplayName(b), 'et'));
  const selectedCompany = companyOptions.find(option => option.slug === company);
  const pageHref = (next: number) => {
@@ -74,7 +77,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       {(chips.length > 0 || !validated.success) && <a className="text-link" href={catalogHref(reset)}>Tühjenda</a>}
      </div>
      <fieldset><legend>Kategooria</legend>
-      {productCategories.map(value => <label className="catalog-option" key={value}>
+      {categories.map(value => <label className="catalog-option" key={value}>
        <input name="category" type="checkbox" value={value} defaultChecked={category.includes(value)} /> {value}
       </label>)}
      </fieldset>

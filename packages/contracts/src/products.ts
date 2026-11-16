@@ -5,11 +5,18 @@ export const productAvailability = { in_stock: 'Laos', on_order: 'Tellimisel', s
 export const shopPlatformSchema = z.enum(['shopify', 'woocommerce', 'wix']);
 export const productAvailabilitySchema = z.enum(['in_stock', 'on_order', 'sold_out']);
 export const productPriceSchema = z.number().int().min(0).max(100_000_000).nullable();
+export const productCategoryMaxLength = 60;
+export const productCategoryNameSchema = z.string().normalize().trim().min(1).max(productCategoryMaxLength)
+ .refine(name => !/[\p{Cc}\p{Cf}]/u.test(name));
+export const productCategoryCreateSchema = z.object({
+ name: productCategoryNameSchema.transform(name => name.replace(/\s+/gu, ' ')),
+}).strict();
+
 const catalogPrice = z.string().regex(/^\d{1,7}(?:[.,]\d{1,2})?$/)
  .transform(value => Math.round(Number(value.replace(',', '.')) * 100))
  .pipe(productPriceSchema.unwrap());
 export const productCatalogFiltersSchema = z.object({
- category: z.array(z.enum(productCategories)).max(productCategories.length).default([]),
+ category: z.array(productCategoryNameSchema).default([]),
  availability: z.array(productAvailabilitySchema).max(3).default([]),
  min: catalogPrice.optional(),
  max: catalogPrice.optional(),
@@ -33,7 +40,7 @@ export function publicHttpsUrl(value: string) {
 const productLinkSchema = z.string().trim().max(2048).refine(value => value === '' || Boolean(publicHttpsUrl(value)));
 export const productContentSchema = z.object({
  title: z.string().trim().max(120),
- category: z.enum(productCategories),
+ category: productCategoryNameSchema,
  description: z.string().trim().max(2000),
  photos: z.array(z.string().max(2048).refine(value => localProductPhoto.test(value) || Boolean(publicHttpsUrl(value)))).max(5),
  priceCents: productPriceSchema,
