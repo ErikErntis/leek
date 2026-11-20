@@ -1,5 +1,5 @@
 import 'server-only';
-export async function proxyRequest(request: Request, path: string) {
+export async function proxyRequest(request: Request, path: string, maxSize = 32768) {
  try {
   if (request.method === 'POST' && (!process.env.ADMIN_URL || request.headers.get('origin') !== new URL(process.env.ADMIN_URL).origin)) return Response.json({error:'Päringu päritolu pole lubatud.'},{status:403});
   const headers = new Headers();
@@ -9,7 +9,7 @@ export async function proxyRequest(request: Request, path: string) {
    if(request.headers.get('content-type')?.split(';')[0]?.trim()!=='application/json')return new Response(null,{status:415});
    const reader=request.body?.getReader();if(!reader)return new Response(null,{status:400});
    const chunks:Uint8Array[]=[];let size=0;
-   for(;;){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>32768){await reader.cancel();return new Response(null,{status:413});}chunks.push(value);}
+   for(;;){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>maxSize){await reader.cancel();return new Response(null,{status:413});}chunks.push(value);}
    body=Buffer.concat(chunks).toString('utf8');headers.set('content-type','application/json');
   }
   const response=await fetch(new URL(path,process.env.API_URL),{method:request.method,headers,body,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});

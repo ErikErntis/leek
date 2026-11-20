@@ -15,3 +15,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .company-card{background:var(--paper)}
 .community-banner .eyebrow{color:var(--accent)}
 .community-banner p{color:#d9eeee}
+
+.site-copy-lines { white-space: pre-line; }
+.site-hero-photo { position: relative; overflow: hidden; }
+.site-hero-photo > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.hero-coast.site-hero-photo > span { z-index: 2; }

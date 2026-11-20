@@ -1,9 +1,58 @@
 import { ArrowRight, Hammer, Utensils, Users, Factory, ShoppingBag, MoveUpRight, Sprout } from 'lucide-react';
 import { CompanyCard } from '@leek/ui';
 import { getPublicData } from '../lib/data';
+import { getSiteContent } from '../lib/site-content';
 import { SearchForm } from '../components/search';
 import { JobCard } from '../components/job-card';
-export const dynamic='force-dynamic';
-export const metadata={alternates:{canonical:'/'}};
-const categoryLinks=[['Ehitus',Hammer],['Toitlustus ja majutus',Utensils],['Teenused',Users],['Tootmine',Factory],['Jaemüük',ShoppingBag]] as const;
-export default async function Home(){const data=await getPublicData();return <><div className="container"><section className="hero"><div className="hero-copy"><span className="eyebrow">KOHALIKUD ETTEVÕTTED. SUURED VÕIMALUSED.</span><h1>Koos kasvab<br/><span>Loode-Eesti.</span></h1><p>Avasta meie kandi ettevõtted, nende teenused ja uued võimalused. LEEK toob piirkonna tegijad ühte kohta.</p><div className="hero-signature"><i/>INIMESED / ETTEVÕTTED / KODUKANT</div></div><div className="hero-images"><div className="hero-main" style={{backgroundImage:'url(/images/workshop.webp)'}} role="img" aria-label="Kohalik tisler päikeselises puidutöökojas"/><div className="hero-coast" style={{backgroundImage:'url(/images/coast.webp)'}}><span>Sama kant.<br/>Rohkem võimalusi.</span></div><div className="hero-note"><Sprout size={27}/><p>Suured asjad<br/>algavad lähedalt.</p><small>LOODE-EESTI TEGIJAD</small></div></div></section><SearchForm/><div className="category-strip">{categoryLinks.map(([label,Icon])=><a key={label} href={'/ettevotted?category='+encodeURIComponent(label)}><Icon size={29} strokeWidth={1.5}/>{label}<ArrowRight size={13}/></a>)}</div><section className="section"><div className="section-heading"><div><span className="eyebrow">MEIE KANDI ETTEVÕTTED</span><h2>Tegijad meie kõrval</h2></div><a href="/ettevotted" className="text-link">Vaata kõiki ettevõtteid <ArrowRight size={16}/></a></div><div className="company-grid">{data.companies.filter(c=>c.featured).slice(0,3).map(c=><CompanyCard key={c.id} company={c}/>)}</div>{!data.companies.length&&<p className="muted">Esimesed ettevõtted lisanduvad peagi.</p>}</section><section className="community-banner"><div><span className="eyebrow">SINUGA ON MEID ROHKEM</span><h2>Sinu ettevõte kuulub siia.</h2><p>Tee ennast kodukandis nähtavaks. Leia uusi kliente, koostööpartnereid ja inimesi, kellega koos edasi liikuda.</p></div><a href="/liitu" className="button">Avasta liitumisvõimalused <MoveUpRight size={18}/></a></section><section className="section"><div className="section-heading"><div><span className="eyebrow">TÖÖTA KODUKANDIS</span><h2>Järgmine võimalus on lähedal</h2><p>Leia oma koht Loode-Eesti ettevõtetes.</p></div><a href="/tookohad" className="text-link">Kõik tööpakkumised <ArrowRight size={16}/></a></div><div className="jobs-grid">{data.jobs.slice(0,4).map(j=><JobCard key={j.id} job={j} company={data.companies.find(c=>c.id===j.companyId)}/>)}</div>{!data.jobs.length&&<p className="muted">Aktiivseid tööpakkumisi praegu ei ole.</p>}</section></div></>;}
+
+export const dynamic = 'force-dynamic';
+export const metadata = { alternates: { canonical: '/' } };
+const categoryLinks = [['Ehitus', Hammer], ['Toitlustus ja majutus', Utensils], ['Teenused', Users], ['Tootmine', Factory], ['Jaemüük', ShoppingBag]] as const;
+
+export default async function Home() {
+ const [data, content] = await Promise.all([getPublicData(), getSiteContent()]);
+ const featured = data.companies.filter(company => company.featured).slice(0, 3);
+ return <div className="container">
+  {content.heroVisible && <section className="hero">
+   <div className="hero-copy">
+    <span className="eyebrow">{content.heroEyebrow}</span>
+    <h1>{content.heroTitle}<br /><span>{content.heroHighlight}</span></h1>
+    <p>{content.heroDescription}</p>
+    <div className="hero-signature"><i />{content.heroSignature}</div>
+   </div>
+   <div className="hero-images">
+    <div className="hero-main site-hero-photo"><img src={content.heroImage} alt={content.heroImageAlt} width={780} height={580} /></div>
+    <div className="hero-coast site-hero-photo">
+     <img src={content.coastImage} alt={content.coastImageAlt} width={400} height={320} />
+     <span className="site-copy-lines">{content.coastText}</span>
+    </div>
+    <div className="hero-note"><Sprout size={27} /><p className="site-copy-lines">{content.heroNote}</p><small>{content.heroNoteCaption}</small></div>
+   </div>
+  </section>}
+  {content.searchVisible && <SearchForm title={content.searchButton} placeholder={content.searchPlaceholder} />}
+  {content.categoriesVisible && <div className="category-strip">
+   {categoryLinks.map(([label, Icon]) => <a key={label} href={'/ettevotted?category=' + encodeURIComponent(label)}>
+    <Icon size={29} strokeWidth={1.5} />{label}<ArrowRight size={13} />
+   </a>)}
+  </div>}
+  {content.companiesVisible && <section className="section">
+   <div className="section-heading"><div><span className="eyebrow">{content.companiesEyebrow}</span><h2>{content.companiesTitle}</h2></div>
+    <a href={content.companiesLink} className="text-link">{content.companiesButton} <ArrowRight size={16} /></a>
+   </div>
+   <div className="company-grid">{featured.map(company => <CompanyCard key={company.id} company={company} />)}</div>
+   {!featured.length && <p className="muted">{content.companiesEmpty}</p>}
+  </section>}
+  {content.bannerVisible && <section className="community-banner">
+   <div><span className="eyebrow">{content.bannerEyebrow}</span><h2>{content.bannerTitle}</h2><p>{content.bannerDescription}</p></div>
+   <a href={content.bannerLink} className="button">{content.bannerButton} <MoveUpRight size={18} /></a>
+  </section>}
+  {content.jobsVisible && <section className="section">
+   <div className="section-heading">
+    <div><span className="eyebrow">{content.jobsEyebrow}</span><h2>{content.jobsTitle}</h2><p>{content.jobsDescription}</p></div>
+    <a href={content.jobsLink} className="text-link">{content.jobsButton} <ArrowRight size={16} /></a>
+   </div>
+   <div className="jobs-grid">{data.jobs.slice(0, 4).map(job => <JobCard key={job.id} job={job} company={data.companies.find(company => company.id === job.companyId)} />)}</div>
+   {!data.jobs.length && <p className="muted">{content.jobsEmpty}</p>}
+  </section>}
+ </div>;
+}

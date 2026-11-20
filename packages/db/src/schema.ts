@@ -159,3 +159,17 @@ export const inquiryOffers = pgTable('inquiry_offers', {
  index('inquiry_offers_thread_idx').on(table.inquiryId, table.createdAt),
  uniqueIndex('inquiry_offers_one_pending_idx').on(table.inquiryId).where(sql`${table.status} = 'pending'`),
 ]);
+
+export const siteSettings = pgTable('site_settings', {
+ id: text().primaryKey(),
+ content: jsonb().$type<import('@leek/contracts').SiteContent>().notNull(),
+ version: integer().notNull().default(1),
+ updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const siteMedia = pgTable('site_media', {
+ id: uuid().primaryKey(),
+ key: text().notNull(),
+ createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+ createdAt: created(),
+});

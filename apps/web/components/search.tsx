@@ -24,6 +24,7 @@ export type SearchFormProps = {
   action?: string;
   /** Submit button content. */
   title?: string;
+  placeholder?: string;
   icon?: ReactNode;
 };
 
@@ -41,6 +42,7 @@ export function SearchForm({
   municipality = '',
   action = '/ettevotted',
   title = 'Otsi ettevõtteid',
+  placeholder = 'Ettevõte või teenus',
   icon = <ArrowRight size={18} />,
 }: SearchFormProps) {
   const [selectedCategory, setSelectedCategory] = useState(category);
@@ -100,7 +102,7 @@ export function SearchForm({
             className={styles.input}
             name="q"
             type="search"
-            placeholder="Ettevõte või teenus"
+            placeholder={placeholder}
             defaultValue={q}
             maxLength={120}
           />

@@ -177,3 +177,5 @@ export * from "./catalog";
 export * from "./products";
 
 export * from "./inquiries";
+
+export * from './site-content';

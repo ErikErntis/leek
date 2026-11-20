@@ -1,3 +1,4 @@
+import { getSiteContent } from '../lib/site-content';
 import { ArrowRight, LogIn, Menu, MessageCircle } from 'lucide-react';
 import { Brand } from '@leek/ui';
 import styles from './site-header.module.css';
@@ -5,20 +6,19 @@ import { getSession } from '../lib/session';
 import { customerInboxPath } from '../lib/inquiry-links';
 import { LogoutButton } from './auth/logout-button';
 
-const links = [
-  ['Ettevõtted', '/ettevotted'],
-  ['Teenused', '/teenused'],
-  ['Tooted', '/tooted'],
-  ['Pakkumised', '/pakkumised'],
-  ['Tööpakkumised', '/tookohad'],
-  ['Paketid', '/liitu'],
-  ['Klubist', '/klubist'],
-] as const;
-
 /** One shared public header, including the signup/login pages. */
 export async function SiteHeader() {
   // A temporary auth outage must not break public directory pages.
-  const session = await getSession().catch(() => null);
+  const [session, content] = await Promise.all([getSession().catch(() => null), getSiteContent()]);
+  const links = [
+    [content.navCompanies, '/ettevotted'],
+    [content.navServices, '/teenused'],
+    [content.navProducts, '/tooted'],
+    [content.navOffers, '/pakkumised'],
+    [content.navJobs, '/tookohad'],
+    [content.navPlans, '/liitu'],
+    [content.navAbout, '/klubist'],
+  ] as const;
   return (
     <header className="site-header">
       <div className="container nav">

@@ -1,3 +1,5 @@
+import type { createSiteContent } from './site-content';
+import { defaultSiteContent } from '@leek/contracts';
 import type { createInquiries } from './inquiries';
 import type { createProductListings } from './product-listings';
 import type { createServiceListings } from './service-listings';
@@ -14,7 +16,7 @@ import type { createAuth } from '@leek/auth/server';
 import { companyRoutes } from './company-routes';
 import type { createCompanyService } from './company-service';
 export type AuthHandler = Pick<ReturnType<typeof createAuth>, 'handler' | 'api'>;
-export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>) {
+export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>) {
  const app = new Hono();
  app.use('*',secureHeaders());
  app.use('/api/auth/*', bodyLimit({ maxSize: 16384, onError: c => c.json({ error: 'Liiga suur päring' }, 413) }));
@@ -40,8 +42,12 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
  });
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:undefined,allowMethods:['GET','OPTIONS']}));
  if(media)app.route('/',media);
- app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products, inbox));
+ app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products, inbox, site));
  app.get('/health',async c=>{try {await repository.check();return c.json({status:'ok'});}catch{return c.json({status:'unavailable'},503);}});
+ app.get('/v1/site-content', async c => {
+  c.header('Cache-Control', 'no-store');
+  return c.json(site ? await site.read() : { version: 0, content: defaultSiteContent });
+ });
  app.get('/v1/public',async c=>c.json(publicProjection(await repository.readPublic())));
  app.get('/v1/companies',async c=>{const q=directoryQuerySchema.safeParse(c.req.query());if(!q.success)return c.json({error:'Vigased otsinguparameetrid'},400);const data=publicProjection(await repository.readPublic());return c.json({items:filterCompanies(data.companies,q.data),source:data.source});});
  app.get('/v1/companies/:slug',async c=>{const data=publicProjection(await repository.readPublic());const company=data.companies.find(x=>x.status==='published'&&x.slug===c.req.param('slug'));if(!company)return c.json({error:'Ettevõtet ei leitud'},404);return c.json({company:companySchema.parse(company),jobs:data.jobs.filter(j=>j.companyId===company.id),offers:data.offers.filter(o=>o.companyId===company.id),source:data.source});});

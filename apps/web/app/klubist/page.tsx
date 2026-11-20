@@ -1,2 +1,15 @@
-export const metadata={title:'Loode-Eesti ettevõtlusklubist',alternates:{canonical:'/klubist'}};
-export default function About(){return <div className="container"><article className="prose"><span className="eyebrow">LOODE-EESTI ETTEVÕTLUSKLUBI</span><h1>Üks piirkond.<br/>Palju häid tegijaid.</h1><p>LEEK toob kokku Loode-Eesti ettevõtted ning aitab kohalikel inimestel avastada oma kandi teenuseid, tooteid ja töövõimalusi.</p><h2>Lähedalt leitud koostöö</h2><p>Soovime, et hea tegija ei jääks märkamata. Et kodu lähedalt leiaks nii usaldusväärse teenusepakkuja kui ka partneri järgmise idee elluviimiseks.</p><h2>Rohkem nähtavust. Rohkem võimalusi.</h2><p>Ettevõtte profiil koondab tutvustuse ja kontaktid ühte kohta. Pakkumised ning töökuulutused aitavad jõuda inimesteni, kes otsivad just sinu ettevõtte võimalusi.</p><a className="button" href="/ettevotted">Avasta meie kandi ettevõtteid →</a></article></div>;}
+import { getSiteContent } from '../../lib/site-content';
+
+export const metadata = { title: 'Loode-Eesti ettevõtlusklubist', alternates: { canonical: '/klubist' } };
+
+export default async function About() {
+ const content = await getSiteContent();
+ return <div className="container"><article className="prose">
+  <span className="eyebrow">{content.aboutEyebrow}</span>
+  <h1 className="site-copy-lines">{content.aboutTitle}</h1>
+  <p className="site-copy-lines">{content.aboutLead}</p>
+  <h2>{content.aboutSubtitle}</h2><p className="site-copy-lines">{content.aboutBody}</p>
+  <h2>{content.aboutSecondTitle}</h2><p className="site-copy-lines">{content.aboutSecondBody}</p>
+  <a className="button" href={content.aboutLink}>{content.aboutButton}</a>
+ </article></div>;
+}

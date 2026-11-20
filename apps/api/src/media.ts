@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { and, eq, desc, sql } from 'drizzle-orm';
-import { companies, companyMedia, memberships, productListings, serviceListings, users, type createDatabase } from '@leek/db';
+import { companies, companyMedia, memberships, productListings, serviceListings, siteMedia, siteSettings, users, type createDatabase } from '@leek/db';
 import type { AuthHandler } from './app';
 
 type Database=ReturnType<typeof createDatabase>['db'];
@@ -38,6 +38,39 @@ export function createMediaRoutes(db:Database,auth:AuthHandler,origins:string[])
    maxAttempts: 2,
   })
   : null;
+ app.post('/v1/admin/site-images', bodyLimit({ maxSize: 5 * 1024 * 1024 }), async c => {
+  if (!origins.includes(c.req.header('origin') ?? '')) return c.json({ error: 'Päringu päritolu pole lubatud.' }, 403);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers, query: { disableRefresh: true } });
+  if (!session) return c.json({ error: 'Palun logi sisse.' }, 401);
+  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, session.user.id));
+  if (user?.role !== 'admin') return c.json({ error: 'Sul puudub administraatori ligipääs.' }, 403);
+  if (!s3) return c.json({ error: 'Piltide salvestus pole veel seadistatud.' }, 503);
+  let body: Buffer;
+  try { body = await prepareImage(Buffer.from(await c.req.arrayBuffer()), 'image'); }
+  catch { return c.json({ error: 'Vali JPG-, PNG- või WebP-pilt, kuni 5 MB ja vähemalt 64 × 64 px.' }, 400); }
+  const id = randomUUID(), key = `site/${id}.webp`;
+  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: 'image/webp', CacheControl: 'private,max-age=3600' }), { abortSignal: AbortSignal.timeout(15000) });
+  try { await db.insert(siteMedia).values({ id, key, createdBy: session.user.id }); }
+  catch (error) { await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => {}); throw error; }
+  c.header('Cache-Control', 'no-store');
+  return c.json({ url: `/api/site-media/${id}` }, 201);
+ });
+ app.get('/v1/site-media/:id', async c => {
+  c.header('Cache-Control', 'private, no-store');
+  const id = c.req.param('id');
+  if (!/^[a-f0-9-]{36}$/i.test(id)) return c.notFound();
+  const [asset] = await db.select().from(siteMedia).where(eq(siteMedia.id, id));
+  if (!asset || !s3) return c.notFound();
+  const [settings] = await db.select({ content: siteSettings.content }).from(siteSettings).where(eq(siteSettings.id, 'public'));
+  const path = `/api/site-media/${id}`;
+  if (settings?.content.heroImage !== path && settings?.content.coastImage !== path) {
+   const session = await auth.api.getSession({ headers: c.req.raw.headers, query: { disableRefresh: true } });
+   if (!session) return c.notFound();
+   const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, session.user.id));
+   if (user?.role !== 'admin') return c.notFound();
+  }
+  return c.redirect(await getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: asset.key }), { expiresIn: 300 }), 302);
+ });
  app.post('/v1/uploads/:companyId/:kind',bodyLimit({maxSize:5*1024*1024}),async c=>{
   if(!origins.includes(c.req.header('origin')??''))return c.json({error:'Päringu päritolu pole lubatud.'},403);
   const session=await auth.api.getSession({headers:c.req.raw.headers,query:{disableRefresh:true}});

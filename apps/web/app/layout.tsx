@@ -1,3 +1,4 @@
+import { getSiteContent } from '../lib/site-content';
 import type { Metadata } from 'next';
 import { Footer, DemoNotice } from '@leek/ui';
 import '@leek/ui/styles.css';
@@ -20,14 +21,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({ children }: { children: React.ReactNode }) {
+  const content = await getSiteContent();
   return (
     <html lang="et">
       <body>
         <a href="#main" className="skip-link">Liigu põhisisu juurde</a>
         <SiteChrome
           header={<>{process.env.DEMO_MODE === 'true' && <DemoNotice />}<SiteHeader /></>}
-          footer={<Footer />}
+          footer={<Footer content={content} description={content.footerDescription} copyright={content.footerCopyright} signature={content.footerSignature} />}
         >
           {children}
         </SiteChrome>

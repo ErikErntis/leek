@@ -1,3 +1,5 @@
+import type { createSiteContent } from './site-content';
+import { siteContentSaveSchema } from '@leek/contracts';
 import { inquiryActionSchema, inquiryCreateSchema } from '@leek/contracts';
 import type { createInquiries } from './inquiries';
 import type { createProductListings } from './product-listings';
@@ -15,10 +17,10 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
-    routes.use(path, bodyLimit({ maxSize: 32768 }));
+    routes.use(path, bodyLimit({ maxSize: path === '/v1/admin/*' ? 131072 : 32768 }));
     routes.use(path, async (c, next) => {
       c.header('Cache-Control', 'no-store');
       if (!auth || !service) return c.json({ error: 'Teenus pole seadistatud.' }, 503);
@@ -191,6 +193,16 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     if (!validId(c.req.param('id'))) return c.notFound();
     await products.resolveHelp(c.req.param('id'));
     return c.json({ ok: true });
+  });
+  routes.get('/v1/admin/site-content', async c => {
+    if (!site) return c.json({ error: 'Lehe sisu pole seadistatud.' }, 503);
+    return c.json(await site.read());
+  });
+  routes.post('/v1/admin/site-content', async c => {
+    if (!site) return c.json({ error: 'Lehe sisu pole seadistatud.' }, 503);
+    const input = siteContentSaveSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: 'Kontrolli lehe välju, linke ja pilte.' }, 400);
+    return c.json(await site.save(c.get('userId'), input.data.version, input.data.content));
   });
   routes.get('/v1/admin/access', c => c.json({ role: 'admin' }));
   routes.get('/v1/admin/companies', async c => {

@@ -1,3 +1,4 @@
+import { getSiteContent } from '../../lib/site-content';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { catalogPageSize, catalogSortSchema, companyDisplayName, formatServicePrice, municipalities,
  serviceCategories, serviceCatalogFiltersSchema, servicePricingLabels } from '@leek/contracts';
@@ -16,7 +17,7 @@ function catalogHref(params: URLSearchParams) {
 }
 
 export default async function ServicesPage({ searchParams }: { searchParams: Promise<Params> }) {
- const params = await searchParams;
+ const [params, content] = await Promise.all([searchParams, getSiteContent()]);
  const query = first(params.q).trim().slice(0, 120);
  const company = first(params.company).slice(0, 160);
  const rawOffset = Number(first(params.offset));
@@ -61,7 +62,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
  if (validated.success && validated.data.max !== undefined) chips.push({ key: 'max', value: max, label: `Kuni ${formatServicePrice(validated.data.max)}` });
 
  return <div className="container service-page listing-catalog">
-  <h1>Teenused</h1>
+  <h1>{content.servicesTitle}</h1>
   <form action="/teenused" method="get" key={`${active}:${min}:${max}`}>
    <div className="catalog-search" role="search">
     <label><Search size={19} aria-hidden="true" />

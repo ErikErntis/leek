@@ -1,5 +1,7 @@
+import type { SiteContent } from '@leek/contracts';
 import type { ReactNode } from 'react';
 import {
+  Settings,
   ArrowUpRight,
   ArrowRight,
   MapPin,
@@ -105,39 +107,37 @@ export function PublicHeader({
   );
 }
 
-export function Footer() {
+export function Footer({ description = 'Kohalikud tegijad. Ühised võimalused.\nLoode-Eesti ettevõtlus saab kokku siin.',
+ copyright = 'LEEK · Loode-Eesti ettevõtlusklubi', signature = 'Koos on rohkem võimalik.', content,
+}: { description?: string; copyright?: string; signature?: string; content?: SiteContent } = {}) {
   return (
     <footer className="footer">
       <div className="container footer-grid">
         <div>
           <Brand />
 
-          <p>
-            Kohalikud tegijad. Ühised võimalused.
-            <br />
-            Loode-Eesti ettevõtlus saab kokku siin.
-          </p>
+          <p style={{ whiteSpace: 'pre-line' }}>{description}</p>
         </div>
 
         <div>
-          <span className="eyebrow">AVASTA</span>
-          <a href="/ettevotted">Ettevõtted</a>
-          <a href="/pakkumised">Pakkumised</a>
-          <a href="/tookohad">Tööpakkumised</a>
+          <span className="eyebrow">{content?.footerExplore ?? 'AVASTA'}</span>
+          <a href="/ettevotted">{content?.navCompanies ?? 'Ettevõtted'}</a>
+          <a href="/pakkumised">{content?.navOffers ?? 'Pakkumised'}</a>
+          <a href="/tookohad">{content?.navJobs ?? 'Tööpakkumised'}</a>
         </div>
 
         <div>
-          <span className="eyebrow">LEEK</span>
-          <a href="/klubist">Meie klubist</a>
-          <a href="/liitu">Liitumisvõimalused</a>
+          <span className="eyebrow">{content?.footerClub ?? 'LEEK'}</span>
+          <a href="/klubist">{content?.footerAbout ?? 'Meie klubist'}</a>
+          <a href="/liitu">{content?.footerJoin ?? 'Liitumisvõimalused'}</a>
         </div>
       </div>
 
       <div className="container footer-bottom">
         <span>
-          © {new Date().getFullYear()} LEEK · Loode-Eesti ettevõtlusklubi
+          © {new Date().getFullYear()} {copyright}
         </span>
-        <span>Koos on rohkem võimalik.</span>
+        <span>{signature}</span>
       </div>
     </footer>
   );
@@ -222,6 +222,7 @@ const adminNav = [
   ['Teenuste ülevaatus', '/teenused', FileText],
   ['Tooted', '/tooted', FileText],
   ['Paketid', '/paketid', Layers],
+  ['Sätted', '/satted', Settings],
 ] as const;
 
 type WorkspaceShellProps = {
