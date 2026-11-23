@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { municipalities } from './locations';
+export { municipalities } from './locations';
 import { catalogPriceRangeSchema, catalogSortSchema } from './catalog';
 export const planSchema = z.enum(['free', 'visibility', 'employer']);
 export type Plan = z.infer<typeof planSchema>;
@@ -16,7 +18,7 @@ export const offerSchema = z.object({ id: z.string().uuid(), companyId: z.string
 export type Offer = z.infer<typeof offerSchema>;
 export const directoryQuerySchema = z.object({ q: z.string().trim().max(120).default(''), category: z.string().max(80).default(''), municipality: z.string().max(80).default('') });
 export const categories = ['Ehitus', 'Teenused', 'Toitlustus ja majutus', 'Tootmine', 'Jaemüük'] as const;
-export const municipalities = ['Lääne-Harju vald', 'Lääne-Nigula vald', 'Keila linn', 'Haapsalu linn', 'Harku vald'] as const;
+
 export const planNames: Record<Plan, string> = { free: 'Tasuta', visibility: 'Nähtavus', employer: 'Tööandja' };
 export type PublicData = { companies: Company[]; jobs: Job[]; offers: Offer[]; source: 'demo' | 'database' };
 export function filterCompanies(companies: Company[], query: z.infer<typeof directoryQuerySchema>) {
@@ -179,3 +181,4 @@ export * from "./products";
 export * from "./inquiries";
 
 export * from './site-content';
+export * from './work';

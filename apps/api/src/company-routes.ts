@@ -1,3 +1,5 @@
+import type { createWorkListings } from './work-listings';
+import { workActionSchema } from '@leek/contracts';
 import type { createSiteContent } from './site-content';
 import { siteContentSaveSchema } from '@leek/contracts';
 import { inquiryActionSchema, inquiryCreateSchema } from '@leek/contracts';
@@ -17,7 +19,7 @@ import { companySubmissionSchema, reviewDecisionSchema } from '@leek/contracts';
 import { CompanyError, type createCompanyService } from './company-service';
 import type { AuthHandler } from './app';
 
-export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>) {
+export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType<typeof createCompanyService> | undefined, origins: string[], billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>, work?: ReturnType<typeof createWorkListings>) {
   const routes = new Hono<{ Variables: { userId: string } }>();
   for (const path of ['/v1/my/*', '/v1/admin/*']) {
     routes.use(path, bodyLimit({ maxSize: path === '/v1/admin/*' ? 131072 : 32768 }));
@@ -155,6 +157,18 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     const version = body?.version;
     if (!decision.success || !Number.isSafeInteger(version) || version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
     return c.json(await listings.review(c.req.param('id'), version, decision.data.decision, decision.data.note));
+  });
+  routes.get('/v1/my/companies/:id/work', async c => {
+    if (!work) return c.json({ error: 'Töökuulutused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    return c.json(await work.own(c.get('userId'), c.req.param('id')));
+  });
+  routes.post('/v1/my/companies/:id/work', async c => {
+    if (!work) return c.json({ error: 'Töökuulutused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    const input = workActionSchema.safeParse(await c.req.json().catch(() => null));
+    if (!input.success) return c.json({ error: input.error.issues[0]?.message ?? 'Kontrolli kuulutuse andmeid.' }, 400);
+    return c.json(await work.save(c.get('userId'), c.req.param('id'), input.data));
   });
   routes.get('/v1/my/companies/:id/products', async c => {
     if (!products) return c.json({ error: 'Tooted pole seadistatud.' }, 503);

@@ -14,7 +14,26 @@ export const companies = pgTable('companies', {
 },t=>[uniqueIndex('companies_slug_unique').on(t.slug),uniqueIndex('companies_registration_unique').on(t.registrationCode),index('companies_directory_idx').on(t.status,t.category,t.municipality)]);
 export const memberships = pgTable('company_memberships',{userId:uuid('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),companyId:uuid('company_id').notNull().references(()=>companies.id,{onDelete:'cascade'}),role:companyRole().notNull().default('editor'),createdAt:created()},t=>[primaryKey({columns:[t.userId,t.companyId]})]);
 export const subscriptions = pgTable('subscriptions',{id:uuid().primaryKey().defaultRandom(),companyId:uuid('company_id').notNull().references(()=>companies.id,{onDelete:'cascade'}),plan:plan().notNull(),status:text().notNull().default('pending'),startsAt:timestamp('starts_at',{withTimezone:true}),expiresAt:timestamp('expires_at',{withTimezone:true}),createdAt:created()},t=>[index('subscriptions_company_idx').on(t.companyId)]);
-export const jobs = pgTable('jobs',{id:uuid().primaryKey().defaultRandom(),slug:text().notNull().unique(),companyId:uuid('company_id').notNull().references(()=>companies.id,{onDelete:'cascade'}),title:text().notNull(),municipality:text().notNull(),type:text().notNull(),description:text().notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),status:contentStatus().notNull().default('draft'),createdAt:created()},t=>[index('jobs_public_idx').on(t.status,t.expiresAt)]);
+export const jobs = pgTable('jobs', {
+ id: uuid().primaryKey().defaultRandom(),
+ slug: text().notNull().unique(),
+ companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+ title: text().notNull(),
+ municipality: text().notNull(),
+ type: text().notNull(),
+ description: text().notNull(),
+ expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+ status: contentStatus().notNull().default('draft'),
+ content: jsonb().$type<import('@leek/contracts').WorkContent>(),
+ reviewState: text('review_state').$type<'draft' | 'pending' | 'returned' | 'approved'>(),
+ note: text().notNull().default(''),
+ version: integer().notNull().default(0),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+ createdAt: created(),
+}, table => [
+ index('jobs_company_idx').on(table.companyId),
+ index('jobs_public_idx').on(table.status, table.expiresAt),
+]);
 export const offers = pgTable('offers',{id:uuid().primaryKey().defaultRandom(),companyId:uuid('company_id').notNull().references(()=>companies.id,{onDelete:'cascade'}),title:text().notNull(),description:text().notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),status:contentStatus().notNull().default('draft'),createdAt:created()},t=>[index('offers_public_idx').on(t.status,t.expiresAt)]);
 
 // Better Auth core tables; existing users and company memberships retain their UUIDs.

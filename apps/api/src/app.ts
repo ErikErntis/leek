@@ -1,3 +1,4 @@
+import type { createWorkListings } from './work-listings';
 import type { createSiteContent } from './site-content';
 import { defaultSiteContent } from '@leek/contracts';
 import type { createInquiries } from './inquiries';
@@ -16,7 +17,7 @@ import type { createAuth } from '@leek/auth/server';
 import { companyRoutes } from './company-routes';
 import type { createCompanyService } from './company-service';
 export type AuthHandler = Pick<ReturnType<typeof createAuth>, 'handler' | 'api'>;
-export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>) {
+export function createApp(repository: Repository, origins: string[] = [], auth?: AuthHandler, companyService?: ReturnType<typeof createCompanyService>, billing?: ReturnType<typeof createBilling>, profiles?: ReturnType<typeof createProfileService>, media?: Hono, listings?: ReturnType<typeof createServiceListings>, products?: ReturnType<typeof createProductListings>, inbox?: ReturnType<typeof createInquiries>, site?: ReturnType<typeof createSiteContent>, work?: ReturnType<typeof createWorkListings>) {
  const app = new Hono();
  app.use('*',secureHeaders());
  app.use('/api/auth/*', bodyLimit({ maxSize: 16384, onError: c => c.json({ error: 'Liiga suur päring' }, 413) }));
@@ -42,7 +43,7 @@ export function createApp(repository: Repository, origins: string[] = [], auth?:
  });
  app.use('*',cors({origin:origin=>origins.includes(origin)?origin:undefined,allowMethods:['GET','OPTIONS']}));
  if(media)app.route('/',media);
- app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products, inbox, site));
+ app.route('/', companyRoutes(auth, companyService, origins, billing, profiles, listings, products, inbox, site, work));
  app.get('/health',async c=>{try {await repository.check();return c.json({status:'ok'});}catch{return c.json({status:'unavailable'},503);}});
  app.get('/v1/site-content', async c => {
   c.header('Cache-Control', 'no-store');

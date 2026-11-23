@@ -107,6 +107,17 @@ CREATE TABLE IF NOT EXISTS site_media (
  id uuid PRIMARY KEY, key text NOT NULL,
  created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS content jsonb;
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS review_state text;
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS note text NOT NULL DEFAULT '';
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0;
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs(company_id);
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {
