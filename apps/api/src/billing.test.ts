@@ -59,6 +59,8 @@ test('subscription migration preserves paid accounts and backfills preferences o
  const client = new PGlite();
  try {
   for (const name of ['0000_stormy_paibok.sql', '0001_flaky_nebula.sql', '0002_moaning_zarda.sql']) await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`, import.meta.url), 'utf8'));
+  // Legacy installations already had paid_until before subscription migration.
+  await client.exec('ALTER TABLE companies ADD COLUMN paid_until timestamptz');
   await client.exec(`INSERT INTO companies (name,slug,registration_code,category,municipality,email,website,requested_plan,plan,status,paid_until) VALUES
    ('Paid','paid','98765431','Teenused','Harku vald','paid@test.ee','','visibility','visibility','published',now()+interval '1 year'),
    ('Waiting','waiting','98765432','Teenused','Harku vald','waiting@test.ee','','employer','free','published',null),
@@ -72,4 +74,89 @@ test('subscription migration preserves paid accounts and backfills preferences o
   assert.equal(after!.preferred_subscription,3); assert.equal(after!.current_subscription,1);
   await assert.rejects(client.exec("UPDATE companies SET current_subscription=0 WHERE slug='free'"));
  } finally { await client.close(); }
+});
+
+test('paid checkouts recover without webhooks, remain idempotent and never charge again', async () => {
+ const client = new PGlite();
+ const original = { STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET, BETTER_AUTH_URL: process.env.BETTER_AUTH_URL };
+ Object.assign(process.env, { STRIPE_SECRET_KEY: 'sk_test_local', STRIPE_WEBHOOK_SECRET: 'whsec_test', BETTER_AUTH_URL: 'https://web.test' });
+ try {
+  for (const name of ['0000_stormy_paibok.sql','0001_flaky_nebula.sql','0002_moaning_zarda.sql']) await client.exec(await readFile(new URL(`../../../packages/db/migrations/${name}`, import.meta.url), 'utf8'));
+  await client.exec(billingMigration);
+  const db = drizzle(client, { schema }) as unknown as Parameters<typeof createBilling>[0];
+  const [user] = await db.insert(schema.users).values({ name: 'Owner', email: 'recovery@test.ee' }).returning();
+  const [stranger] = await db.insert(schema.users).values({ name: 'Other', email: 'stranger@test.ee' }).returning();
+  type Session = { id: string; url: string; status: string; success_url: string; payment_status: string; amount_total: number; currency: string; client_reference_id: string };
+  const sessions = new Map<string, Session>();
+  let created = 0, reads = 0, offline = false;
+  const transport: typeof fetch = async (url, init) => {
+   const path = String(url).split('/v1/')[1]!;
+   if (offline) return new Response('', { status: 503 });
+   if (path === 'checkout/sessions') {
+    const body = new URLSearchParams(String(init?.body));
+    const id = `cs_recovery_${++created}`;
+    const session: Session = { id, url: `https://checkout.stripe.com/c/pay/${id}`, status: 'open', success_url: body.get('success_url')!, payment_status: 'unpaid', amount_total: Number(body.get('line_items[0][price_data][unit_amount]')), currency: 'eur', client_reference_id: body.get('client_reference_id')! };
+    sessions.set(id, session);
+    return Response.json(session);
+   }
+   reads++;
+   const session = sessions.get(path.split('/')[2]!)!;
+   if (path.endsWith('/expire')) session.status = 'expired';
+   return Response.json(session);
+  };
+  const billing = createBilling(db, transport);
+  async function checkout(slug: string) {
+   const [company] = await db.insert(schema.companies).values({ name: slug, slug, registrationCode: String(12345000 + created), category: 'Teenused', municipality: 'Harku vald', email: `${slug}@test.ee`, website: '', requestedPlan: 'employer', status: 'published' }).returning();
+   await db.insert(schema.memberships).values({ userId: user!.id, companyId: company!.id, role: 'owner' });
+   await billing.checkout(user!.id, company!.id, 'employer');
+   return { id: company!.id, session: sessions.get(`cs_recovery_${created}`)! };
+  }
+  const first = await checkout('overview-recovery');
+  // The success query alone cannot activate an unpaid or still processing payment.
+  first.session.status = 'complete';
+  assert.equal((await billing.overview(user!.id)).companies[0]!.plan, 'free');
+  await assert.rejects(billing.checkout(user!.id, first.id), /töötlemisel/);
+  await assert.rejects(billing.choose(user!.id, first.id, 'free'), /töötlemisel/);
+  const before = reads;
+  assert.deepEqual((await billing.overview(stranger!.id)).companies, []);
+  assert.equal(reads, before);
+  await assert.rejects(billing.checkout(stranger!.id, first.id), /ei leitud/);
+  first.session.payment_status = 'paid';
+  first.session.currency = 'usd';
+  let state = (await billing.overview(user!.id)).companies[0]!;
+  assert.equal(state.plan, 'free'); assert.equal(state.paymentCheckFailed, true);
+  first.session.currency = 'eur';
+  offline = true;
+  state = (await billing.overview(user!.id)).companies[0]!;
+  assert.equal(state.plan, 'free'); assert.equal(state.paymentCheckFailed, true);
+  offline = false;
+  state = (await billing.overview(user!.id)).companies[0]!;
+  assert.equal(state.plan, 'employer'); assert.equal(state.currentSubscription, 3); assert.equal(state.paymentCheckFailed, false);
+  const until = state.paidUntil;
+  assert.ok(until && new Date(until).getTime() > Date.now() + 364 * 86400000);
+  assert.equal((await db.select().from(schema.companies))[0]!.featured, true);
+  await billing.webhook({ type: 'checkout.session.completed', data: { object: first.session } });
+  await billing.webhook({ type: 'checkout.session.async_payment_succeeded', data: { object: first.session } });
+  assert.equal((await billing.overview(user!.id)).companies[0]!.paidUntil, until);
+  assert.equal((await billing.checkout(user!.id, first.id)).activated, true);
+  assert.equal((await billing.choose(user!.id, first.id, 'employer')).activated, true);
+  assert.equal(created, 1);
+  // Recovery must also commit when a user attempts a free switch after paying.
+  const second = await checkout('free-switch-recovery');
+  Object.assign(second.session, { status: 'complete', payment_status: 'paid' });
+  assert.equal((await billing.choose(user!.id, second.id, 'free')).activated, true);
+  state = (await billing.overview(user!.id)).companies.find(c => c.id === second.id)!;
+  assert.equal(state.plan, 'employer'); assert.equal(state.requestedPlan, 'employer');
+  // A repeated checkout attempt recognizes payment rather than creating a charge.
+  const third = await checkout('checkout-recovery');
+  Object.assign(third.session, { status: 'complete', payment_status: 'paid' });
+  const recovered = await billing.checkout(user!.id, third.id);
+  assert.equal(recovered.activated, true);
+  assert.equal(recovered.url, `https://web.test/portaal/pakett?company=${third.id}&payment=success`);
+  assert.equal(created, 3);
+  assert.equal((await billing.overview(user!.id)).companies.find(c => c.id === third.id)!.plan, 'employer');
+ } finally {
+  await client.close();
+  for (const [key, value] of Object.entries(original)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+ }
 });

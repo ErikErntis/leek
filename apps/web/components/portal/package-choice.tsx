@@ -25,7 +25,12 @@ export function PackageChoice({ company, plans, available }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan }), signal: AbortSignal.timeout(20000),
       });
-      if (!result.ok) throw new Error((await result.json()).error ?? 'Paketti ei saanud muuta.');
+      const choice = await result.json();
+      if (!result.ok) throw new Error(choice.error ?? 'Paketti ei saanud muuta.');
+      if (choice.activated) {
+        window.location.assign(`/portaal/pakett?company=${company.id}&payment=success`);
+        return;
+      }
       if (checkout) {
         const response = await fetch(`/api/portal/company/${company.id}/checkout`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -33,6 +38,10 @@ export function PackageChoice({ company, plans, available }: {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? 'Maksmist ei saanud alustada.');
+        if (data.activated) {
+          window.location.assign(`/portaal/pakett?company=${company.id}&payment=success`);
+          return;
+        }
         const url = new URL(data.url);
         if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Vigane makselink.');
         window.location.assign(url.toString());

@@ -31,7 +31,12 @@ export function SubscriptionOffer({ company, plans, available }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: target }), signal: AbortSignal.timeout(20000),
       });
-      if (!choice.ok) throw new Error((await choice.json()).error ?? 'Paketti ei saanud valida.');
+      const chosen = await choice.json();
+      if (!choice.ok) throw new Error(chosen.error ?? 'Paketti ei saanud valida.');
+      if (chosen.activated) {
+        window.location.assign(`/portaal/pakett?company=${company.id}&payment=success`);
+        return;
+      }
       if (target === 'free') {
         window.location.assign(`/portaal?company=${company.id}`);
         return;
@@ -42,6 +47,10 @@ export function SubscriptionOffer({ company, plans, available }: {
       });
       const result = await checkout.json();
       if (!checkout.ok) throw new Error(result.error ?? 'Maksmist ei saanud alustada.');
+      if (result.activated) {
+        window.location.assign(`/portaal/pakett?company=${company.id}&payment=success`);
+        return;
+      }
       const url = new URL(result.url);
       if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Vigane makselink.');
       window.location.assign(url.toString());

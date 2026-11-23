@@ -3,6 +3,9 @@ import { and, eq, desc, inArray, lte } from 'drizzle-orm';
 import { companies, memberships, billingCheckouts, type createDatabase } from '@leek/db';
 import type { Plan } from '@leek/contracts';
 import { CompanyError } from './company-service';
+import { logError } from './log-error';
+type Checkout = typeof billingCheckouts.$inferSelect;
+type PaidSession = { id: string; payment_status?: string; amount_total?: number; currency?: string; client_reference_id?: string };
 type Database = ReturnType<typeof createDatabase>['db'];
 export const plans = [
   { id: 'free', name: 'Alustaja', amount: 0, features: ['Ettevõtte profiil', 'Üks teenus'] },
@@ -36,36 +39,80 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
     if (!company) throw new CompanyError(404, 'Ettevõtet ei leitud.');
     return company;
   }
+  // Both the signed webhook and authenticated portal recovery use the same
+  // transaction. Lock company first everywhere so concurrent deliveries cannot
+  // activate a payment twice or extend the subscription twice.
+  async function activate(tx: Database, record: Checkout, session: PaidSession) {
+    if (session.payment_status !== 'paid') return false;
+    if (record.stripeSessionId !== session.id || record.amount !== session.amount_total || session.currency !== 'eur' || session.client_reference_id !== record.id) throw new Error('Checkout details mismatch');
+    const [company] = await tx.select().from(companies).where(eq(companies.id, record.companyId)).for('update');
+    const [current] = await tx.select().from(billingCheckouts).where(eq(billingCheckouts.id, record.id)).for('update');
+    if (!current) throw new Error('Unknown checkout');
+    if (current.status === 'paid') return true;
+    if (!company || company.status !== 'published') throw new Error('Paid company requires manual review');
+    const now = new Date();
+    const until = new Date(Math.max(now.getTime(), company.paidUntil?.getTime() ?? 0));
+    until.setUTCFullYear(until.getUTCFullYear() + 1);
+    await tx.update(billingCheckouts).set({ status: 'paid', paidAt: now }).where(eq(billingCheckouts.id, record.id));
+    await tx.update(companies).set({ currentSubscription: subscriptionId(record.plan), plan: record.plan, requestedPlan: record.plan, paidUntil: until, featured: record.plan === 'employer', updatedAt: now }).where(eq(companies.id, company.id));
+    return true;
+  }
+  const successURL = (id: string) => `${new URL(process.env.BETTER_AUTH_URL!).origin}/portaal/pakett?company=${id}&payment=success`;
   async function closePending(tx: Database, id: string) {
     const pending = await tx.select().from(billingCheckouts).where(and(eq(billingCheckouts.companyId, id), eq(billingCheckouts.status, 'pending')));
     for (const row of pending) {
       if (row.stripeSessionId) {
         const session = await stripe(`checkout/sessions/${row.stripeSessionId}`);
+        if (await activate(tx, row, session)) return true;
         if (session.status === 'complete') fail('Makse on töötlemisel. Värskenda lehte mõne hetke pärast.');
         if (session.status === 'open') await stripe(`checkout/sessions/${row.stripeSessionId}/expire`, new URLSearchParams());
       }
       await tx.update(billingCheckouts).set({ status: 'cancelled' }).where(eq(billingCheckouts.id, row.id));
     }
+    return false;
   }
   return {
     async overview(userId: string) {
-      const rows = await db.select({ company: companies }).from(memberships).innerJoin(companies, eq(memberships.companyId, companies.id)).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).orderBy(desc(companies.createdAt));
+      let rows = await db.select({ company: companies }).from(memberships).innerJoin(companies, eq(memberships.companyId, companies.id)).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).orderBy(desc(companies.createdAt));
+      const failedChecks = new Set<string>();
+      if (rows.length && process.env.STRIPE_SECRET_KEY) {
+        // Only sessions belonging to this user's companies can be reconciled.
+        // This also recovers older payments without a return URL/session query.
+        const pending = await db.select().from(billingCheckouts).where(and(inArray(billingCheckouts.companyId, rows.map(({ company }) => company.id)), eq(billingCheckouts.status, 'pending')));
+        await Promise.all(pending.filter(record => record.stripeSessionId).map(async record => {
+          try {
+            const session = await stripe(`checkout/sessions/${record.stripeSessionId}`);
+            if (session.payment_status === 'paid') {
+              await db.transaction(raw => activate(raw as unknown as Database, record, session));
+            } else if (session.status === 'expired') {
+              await db.update(billingCheckouts).set({ status: 'expired' }).where(and(eq(billingCheckouts.id, record.id), eq(billingCheckouts.status, 'pending')));
+            }
+          } catch (error) {
+            failedChecks.add(record.companyId);
+            logError('Billing payment reconciliation failed', error);
+          }
+        }));
+        if (pending.length) rows = await db.select({ company: companies }).from(memberships).innerJoin(companies, eq(memberships.companyId, companies.id)).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).orderBy(desc(companies.createdAt));
+      }
       const now = new Date();
       const expired = rows.filter(({ company }) => company.currentSubscription !== null && company.currentSubscription > 1 && company.paidUntil !== null && company.paidUntil <= now);
       if (expired.length) {
         await db.update(companies).set({ currentSubscription: 1, plan: 'free', featured: false, updatedAt: now }).where(and(inArray(companies.id, expired.map(({ company }) => company.id)), inArray(companies.currentSubscription, [2, 3]), lte(companies.paidUntil, now)));
         for (const { company } of expired) company.currentSubscription = 1;
       }
-      return { companies: rows.map(({ company }) => ({ id: company.id, name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, preferredSubscription: company.preferredSubscription, currentSubscription: company.currentSubscription, plan: company.currentSubscription !== null && company.paidUntil && company.paidUntil > now ? subscriptionPlan(company.currentSubscription) : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.BETTER_AUTH_URL) };
+      return { companies: rows.map(({ company }) => ({ id: company.id, paymentCheckFailed: failedChecks.has(company.id), name: company.name, slug: company.slug, status: company.status, reviewNote: company.reviewNote, requestedPlan: company.requestedPlan, preferredSubscription: company.preferredSubscription, currentSubscription: company.currentSubscription, plan: company.currentSubscription !== null && company.paidUntil && company.paidUntil > now ? subscriptionPlan(company.currentSubscription) : 'free', paidUntil: company.paidUntil?.toISOString() ?? null })), plans, checkoutAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.BETTER_AUTH_URL) };
     },
     async choose(userId: string, id: string, plan: Plan) {
       return db.transaction(async raw => {
         const tx = raw as unknown as Database;
         const company = await owner(tx, userId, id);
         if (company.status !== 'published') fail('Paketti saab muuta pärast ettevõtte kinnitamist.');
-        if (company.paidUntil && company.paidUntil > new Date()) fail('Aktiivse tasulise paketi muutmiseks võta ühendust halduriga.');
+        if (company.paidUntil && company.paidUntil > new Date()) {
+          if (plan === company.plan) return { ok: true, activated: true };
+          fail('Aktiivse tasulise paketi muutmiseks võta ühendust halduriga.');
+        }
         if (plan !== 'free' && company.requestedPlan === plan) return { ok: true };
-        await closePending(tx, id);
+        if (await closePending(tx, id)) return { ok: true, activated: true };
         await tx.update(companies).set({ requestedPlan: plan, ...(plan === 'free' ? { currentSubscription: 1 } : {}), plan: 'free', featured: false, paidUntil: null, updatedAt: new Date() }).where(eq(companies.id, id));
         return { ok: true };
       });
@@ -76,15 +123,16 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
         const tx = raw as unknown as Database;
         const company = await owner(tx, userId, id);
         if (company.status !== 'published') fail('Maksta saab pärast ettevõtte kinnitamist.');
-        if (company.paidUntil && company.paidUntil > new Date()) fail('Tasuline pakett on juba aktiivne.');
+        if (company.paidUntil && company.paidUntil > new Date()) return { activated: true, url: successURL(id) };
         if (expectedPlan && company.requestedPlan !== expectedPlan) fail('Paketivalik on vahepeal muutunud. Vali pakett uuesti.');
         const plan = plans.find(p => p.id === company.requestedPlan)!;
         if (plan.id === 'free') fail('Tasuta paketi eest ei ole vaja maksta.');
         const [existing] = await tx.select().from(billingCheckouts).where(and(eq(billingCheckouts.companyId, id), eq(billingCheckouts.status, 'pending')));
         if (existing?.stripeSessionId) {
           const session = await stripe(`checkout/sessions/${existing.stripeSessionId}`);
+          if (await activate(tx, existing, session)) return { activated: true, url: successURL(id) };
           if (session.status === 'open') {
-            const expectedReturn = `${new URL(process.env.BETTER_AUTH_URL!).origin}/portaal/pakett?company=${id}&payment=success`;
+            const expectedReturn = successURL(id);
             if (session.success_url === expectedReturn) return { url: session.url };
             // A Checkout created before the portal move still points at the retired domain.
             await stripe(`checkout/sessions/${existing.stripeSessionId}/expire`, new URLSearchParams());
@@ -106,17 +154,7 @@ export function createBilling(db: Database, transport: typeof fetch = fetch) {
       if (session.payment_status !== 'paid') return;
       const [record] = await db.select().from(billingCheckouts).where(eq(billingCheckouts.stripeSessionId, session.id));
       if (!record) throw new Error('Unknown checkout; retry after transaction commits');
-      if (record.amount !== session.amount_total || session.currency !== 'eur' || session.client_reference_id !== record.id) throw new Error('Checkout details mismatch');
-      await db.transaction(async raw => {
-        const tx = raw as unknown as Database;
-        const [company] = await tx.select().from(companies).where(eq(companies.id, record.companyId)).for('update');
-        const [current] = await tx.select().from(billingCheckouts).where(eq(billingCheckouts.id, record.id)).for('update');
-        if (current!.status === 'paid') return;
-        if (!company || company.status !== 'published') throw new Error('Paid company requires manual review');
-        const now = new Date(); const until = new Date(Math.max(now.getTime(), company.paidUntil?.getTime() ?? 0)); until.setUTCFullYear(until.getUTCFullYear() + 1);
-        await tx.update(billingCheckouts).set({ status: 'paid', paidAt: now }).where(eq(billingCheckouts.id, record.id));
-        await tx.update(companies).set({ currentSubscription: subscriptionId(record.plan), plan: record.plan, requestedPlan: record.plan, paidUntil: until, featured: record.plan === 'employer', updatedAt: now }).where(eq(companies.id, company.id));
-      });
+      await db.transaction(raw => activate(raw as unknown as Database, record, session));
     },
   };
 }
