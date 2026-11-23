@@ -1,10 +1,14 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or } from 'drizzle-orm';
 import { companies, jobs, memberships, type createDatabase } from '@leek/db';
 import { blankWork, canManageWork, workDeadline, workLoads, workSubmitSchema, workToday, type CompanyWork, type WorkAction, type WorkContent } from '@leek/contracts';
 import { CompanyError } from './company-service';
 
 type Database = ReturnType<typeof createDatabase>['db'];
 type Row = typeof jobs.$inferSelect;
+const awaitingReview = and(
+ or(eq(jobs.reviewState, 'pending'), and(isNull(jobs.reviewState), eq(jobs.status, 'pending'))),
+ or(eq(jobs.status, 'pending'), eq(jobs.status, 'published')),
+);
 
 function ownListing(row: Row): CompanyWork {
  const legacy: WorkContent = {
@@ -32,6 +36,38 @@ export function createWorkListings(db: Database) {
   return company.companies;
  }
  return {
+  async queue(offset = 0) {
+   const rows = await db.select({ listing: jobs, companyName: companies.name, brandName: companies.brandName })
+    .from(jobs).innerJoin(companies, eq(jobs.companyId, companies.id)).where(awaitingReview)
+    .orderBy(asc(jobs.updatedAt), asc(jobs.id)).limit(41).offset(offset);
+   return { items: rows.slice(0, 40).map(row => ({ listing: ownListing(row.listing), companyName: row.brandName || row.companyName })), hasMore: rows.length > 40 };
+  },
+  async review(id: string, version: number, decision: 'approve' | 'reject', note: string) {
+   return db.transaction(async tx => {
+    const [reference] = await tx.select({ companyId: jobs.companyId }).from(jobs).where(eq(jobs.id, id));
+    if (!reference) throw new CompanyError(404, 'Kuulutust ei leitud.');
+    // Match the owner save lock order: company first, then listing.
+    const [company] = await tx.select().from(companies).where(eq(companies.id, reference.companyId)).for('update');
+    const [current] = await tx.select().from(jobs).where(and(eq(jobs.id, id), awaitingReview)).for('update');
+    if (!current || current.version !== version) throw new CompanyError(409, 'Kuulutus on vahepeal muutunud või juba üle vaadatud. Värskenda järjekorda.');
+    const content = ownListing(current).content;
+    if (decision === 'approve') {
+     if (!company || !canManageWork(company)) throw new CompanyError(403, 'Avaldamiseks on vajalik kinnitatud ettevõte ja aktiivne Eestvedaja pakett.');
+     const valid = workSubmitSchema.safeParse(content);
+     if (!valid.success) throw new CompanyError(400, valid.error.issues[0]!.message);
+    }
+    const [updated] = await tx.update(jobs).set({
+     ...(decision === 'approve' ? {
+      title: content.title, municipality: content.municipality, description: content.description,
+      type: content.kind === 'gig' ? 'Tööamps' : workLoads[content.load],
+      expiresAt: workDeadline(content.deadline), status: 'published' as const,
+     } : { status: current.status === 'published' ? 'published' as const : 'draft' as const }),
+     reviewState: decision === 'approve' ? 'approved' : 'returned',
+     note, version: current.version + 1, updatedAt: new Date(),
+    }).where(eq(jobs.id, id)).returning();
+    return ownListing(updated!);
+   });
+  },
   async own(userId: string, companyId: string) {
    const company = await owner(userId, companyId);
    const items = await db.select().from(jobs).where(eq(jobs.companyId, companyId)).orderBy(desc(jobs.updatedAt), desc(jobs.id));

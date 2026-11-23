@@ -158,6 +158,20 @@ export function companyRoutes(auth: AuthHandler | undefined, service: ReturnType
     if (!decision.success || !Number.isSafeInteger(version) || version < 0) return c.json({ error: 'Kontrolli otsust ja märkust.' }, 400);
     return c.json(await listings.review(c.req.param('id'), version, decision.data.decision, decision.data.note));
   });
+  routes.get('/v1/admin/work', async c => {
+    if (!work) return c.json({ error: 'Töökuulutused pole seadistatud.' }, 503);
+    const offset = Number(c.req.query('offset') ?? 0);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) return c.notFound();
+    return c.json(await work.queue(offset));
+  });
+  routes.post('/v1/admin/work/:id/review', async c => {
+    if (!work) return c.json({ error: 'Töökuulutused pole seadistatud.' }, 503);
+    if (!validId(c.req.param('id'))) return c.notFound();
+    const body = await c.req.json().catch(() => null);
+    const input = reviewDecisionSchema.safeParse({ decision: body?.decision, note: body?.note });
+    if (!input.success || !Number.isSafeInteger(body?.version) || body.version < 0) return c.json({ error: 'Kontrolli otsust, versiooni ja põhjendust.' }, 400);
+    return c.json(await work.review(c.req.param('id'), body.version, input.data.decision, input.data.note));
+  });
   routes.get('/v1/my/companies/:id/work', async c => {
     if (!work) return c.json({ error: 'Töökuulutused pole seadistatud.' }, 503);
     if (!validId(c.req.param('id'))) return c.notFound();

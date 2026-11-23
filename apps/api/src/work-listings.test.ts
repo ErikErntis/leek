@@ -22,8 +22,9 @@ test('company work listings enforce premium ownership, preserve drafts, contact 
   await client.exec(await readFile(new URL('../../../packages/db/migrations/0005_company_work.sql', import.meta.url), 'utf8'));
   await client.exec(billingMigration);
   const db = drizzle(client, { schema }) as unknown as Parameters<typeof createWorkListings>[0];
-  const [owner, outsider] = await db.insert(schema.users).values([
+  const [owner, outsider, admin] = await db.insert(schema.users).values([
    { name: 'Owner', email: 'owner@work.test' }, { name: 'Other', email: 'other@work.test' },
+   { name: 'Admin', email: 'admin@work.test', role: 'admin' },
   ]).returning();
   const [company, otherCompany] = await db.insert(schema.companies).values([
    { name: 'Töö Firma', slug: 'work', registrationCode: '12345678', category: 'Tootmine', municipality: 'Keila linn',
@@ -36,7 +37,7 @@ test('company work listings enforce premium ownership, preserve drafts, contact 
    { companyId: otherCompany!.id, userId: outsider!.id, role: 'owner' },
   ]);
   const auth = { api: { getSession: async ({ headers }: { headers: Headers }) => {
-   const user = headers.get('cookie') === 'owner' ? owner : headers.get('cookie') === 'other' ? outsider : null;
+   const user = headers.get('cookie') === 'owner' ? owner : headers.get('cookie') === 'other' ? outsider : headers.get('cookie') === 'admin' ? admin : null;
    return user ? { user } : null;
   } } } as unknown as AuthHandler;
   const work = createWorkListings(db);
@@ -131,6 +132,62 @@ test('company work listings enforce premium ownership, preserve drafts, contact 
   assert.equal(workSubmitSchema.safeParse({ ...gig, payMinCents: 5000, payMaxCents: 1000 }).success, false);
   assert.equal((await request({ id: gigId, version: submittedGig.version, action: 'close' }, 'other', 'https://web.test', `/v1/my/companies/${otherCompany!.id}/work`)).status, 409);
   assert.equal((await okay(await request())).items.find((item: { id: string }) => item.id === gigId).status, 'pending');
+  // Admin review: access, validation, stale decisions, corrections and publication.
+  const queuePath = '/v1/admin/work';
+  const reviewPath = (listingId: string) => `/v1/admin/work/${listingId}/review`;
+  const decide = (listingId: string, version: number, decision = 'approve', note = '') =>
+   request({ version, decision, note }, 'admin', 'https://web.test', reviewPath(listingId));
+  assert.equal((await request(undefined, '', 'https://web.test', queuePath)).status, 401);
+  assert.equal((await request(undefined, 'owner', 'https://web.test', queuePath)).status, 403);
+  assert.equal((await request({ version: submittedGig.version, decision: 'approve' }, 'owner', 'https://web.test', reviewPath(gigId))).status, 403);
+  assert.equal((await request({ version: submittedGig.version, decision: 'approve' }, 'admin', 'https://foreign.test', reviewPath(gigId))).status, 403);
+  assert.equal((await request(undefined, 'admin', 'https://web.test', queuePath + '?offset=-1')).status, 404);
+  const queue = await okay(await request(undefined, 'admin', 'https://web.test', queuePath));
+  assert.deepEqual(new Set(queue.items.map((item: { listing: { id: string } }) => item.listing.id)), new Set([legacyId, gigId]));
+  assert.equal(queue.hasMore, false);
+  assert.equal((await decide(gigId, submittedGig.version, 'reject', 'no')).status, 400);
+  assert.equal((await decide(gigId, -1)).status, 400);
+  assert.equal((await decide(gigId, submittedGig.version + 1)).status, 409);
+  const returned = await okay(await decide(gigId, submittedGig.version, 'reject', 'Täpsusta töö kirjeldust.'));
+  assert.equal(returned.status, 'returned');
+  assert.equal(returned.published, false);
+  assert.equal(returned.note, 'Täpsusta töö kirjeldust.');
+  assert.equal((await decide(gigId, submittedGig.version)).status, 409);
+  const resubmitted = await okay(await request({ id: gigId, version: returned.version, action: 'submit', content: gig }));
+  const approved = await okay(await decide(gigId, resubmitted.version));
+  assert.equal(approved.status, 'published');
+  assert.equal(approved.published, true);
+  const [publicGig] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, gigId));
+  assert.equal(publicGig!.title, gig.title);
+  assert.equal(publicGig!.type, 'Tööamps');
+  assert.equal(publicGig!.expiresAt.toISOString(), workDeadline(gig.deadline).toISOString());
+  assert.equal((await decide(gigId, resubmitted.version)).status, 409);
+
+  // Rejected edits keep the previous public fields and can be edited again.
+  const oldReturned = await okay(await decide(legacyId, updated.version, 'reject', 'Lisa täpsemad nõudmised.'));
+  assert.equal(oldReturned.status, 'returned');
+  assert.equal(oldReturned.published, true);
+  const [stillLive] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, legacyId));
+  assert.equal(stillLive!.title, 'Algne kuulutus');
+  const resubmitEdit = await okay(await request({ id: legacyId, version: oldReturned.version, action: 'submit', content }));
+  await db.update(schema.companies).set({ paidUntil: new Date(0) }).where(eq(schema.companies.id, company!.id));
+  assert.equal((await decide(legacyId, resubmitEdit.version)).status, 403);
+  await db.update(schema.companies).set({ paidUntil: new Date(Date.now() + 86400000) }).where(eq(schema.companies.id, company!.id));
+  await okay(await decide(legacyId, resubmitEdit.version));
+  const [newLive] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, legacyId));
+  assert.equal(newLive!.title, content.title);
+  assert.equal(newLive!.reviewState, 'approved');
+
+  // Withdrawn and expired submissions cannot be approved.
+  const edit = await okay(await request({ id: gigId, version: approved.version, action: 'submit', content: gig }));
+  await okay(await request({ id: gigId, version: edit.version, action: 'withdraw' }));
+  assert.equal((await decide(gigId, edit.version)).status, 409);
+  await db.update(schema.jobs).set({ reviewState: 'pending', content: { ...gig, deadline: '2020-01-01' } }).where(eq(schema.jobs.id, gigId));
+  const [expired] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, gigId));
+  assert.equal((await decide(gigId, expired!.version)).status, 400);
+  await okay(await decide(gigId, expired!.version, 'reject', 'Vali uus vastamise tähtaeg.'));
+  const emptyQueue = await okay(await request(undefined, 'admin', 'https://web.test', queuePath));
+  assert.equal(emptyQueue.items.length, 0);
   assert.equal(workDeadline('2027-01-10').toISOString(), '2027-01-10T21:59:59.999Z');
   assert.equal(workDeadline('2027-07-10').toISOString(), '2027-07-10T20:59:59.999Z');
  } finally { await client.close(); }
