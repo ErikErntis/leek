@@ -40,7 +40,7 @@ function useInquirySubmit() {
 }
 
 export function NewInquiryForm({ source, listingId, options, selectedId, priceCents, fixed }: {
- source: 'service' | 'product'; listingId: string; options: Option[]; selectedId?: string;
+ source: 'service' | 'product' | 'work'; listingId: string; options: Option[]; selectedId?: string;
  priceCents: number | null; fixed: boolean;
 }) {
  const router = useRouter();
@@ -54,7 +54,7 @@ export function NewInquiryForm({ source, listingId, options, selectedId, priceCe
   const data = new FormData(event.currentTarget);
   void run(async id => {
    const base = { id, listingId, optionId: optionId || null, message: String(data.get('message') ?? '') };
-   const input: InquiryCreate = source === 'product'
+   const input: InquiryCreate = source === 'work' ? { id, listingId, source, message: base.message } : source === 'product'
     ? { ...base, source, quantity: Number(data.get('quantity')) }
     : { ...base, source, expectedPriceCents: fixed ? selectedPrice : null,
      location: String(data.get('location') ?? ''), desiredDate: String(data.get('desiredDate') ?? '') || null };
@@ -74,12 +74,12 @@ export function NewInquiryForm({ source, listingId, options, selectedId, priceCe
    </label>}
    {selectedPrice !== null && <p className="inbox-price">{formatServicePrice(selectedPrice)} {source === 'product' && ' / tk'}</p>}
    {source === 'product' ? <label>Kogus<input name="quantity" type="number" min={1} max={999} defaultValue={1} required /></label> :
-    <div className="inbox-form-pair">
+    source === 'service' ? <div className="inbox-form-pair">
      <label>Töö asukoht<input name="location" maxLength={250} minLength={2} placeholder="Näiteks Paldiski" required /></label>
      <label>Soovitud kuupäev <small>Valikuline</small><input name="desiredDate" type="date" /></label>
-    </div>}
-   <label>{source === 'product' ? 'Sõnum' : 'Töö kirjeldus'}<textarea name="message" rows={5} maxLength={4000} required /></label>
-   <button className="button" type="submit" disabled={fixed && selectedPrice === null}>{sent ? 'Päring saadetud' : busy ? 'Saadan…' : fixed ? 'Saada tellimissoov' : 'Saada päring'}</button>
+    </div> : null}
+   <label>{source === 'work' ? 'Tutvusta ennast ja oma kogemust' : source === 'product' ? 'Sõnum' : 'Töö kirjeldus'}<textarea name="message" rows={5} maxLength={4000} required /></label>
+   <button className="button" type="submit" disabled={fixed && selectedPrice === null}>{sent ? 'Päring saadetud' : busy ? 'Saadan…' : source === 'work' ? 'Saada kandideerimine' : fixed ? 'Saada tellimissoov' : 'Saada päring'}</button>
   </fieldset>
   {error && <p className="inbox-error" role="alert">{error}</p>}
  </form>;

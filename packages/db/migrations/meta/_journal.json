@@ -43,6 +43,13 @@
       "when": 1795418154074,
       "tag": "0005_company_work",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795420000000,
+      "tag": "0006_public_work",
+      "breakpoints": true
     }
   ]
 }

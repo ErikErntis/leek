@@ -1,5 +1,5 @@
-import { and, desc, eq, exists, isNotNull, isNull, sql } from 'drizzle-orm';
-import { companies, inquiries, inquiryMessages, inquiryOffers, memberships, productListings, serviceListings, users, type createDatabase } from '@leek/db';
+import { and, desc, eq, exists, isNotNull, isNull, gt, sql } from 'drizzle-orm';
+import { companies, jobs, inquiries, inquiryMessages, inquiryOffers, memberships, productListings, serviceListings, users, type createDatabase } from '@leek/db';
 import type { InquiryAction, InquiryCreate, InquiryKind, InquirySide, InquirySnapshot, InquirySummary, InquiryThread } from '@leek/contracts';
 import { CompanyError } from './company-service';
 
@@ -42,7 +42,14 @@ export function createInquiries(db: Database) {
     let companyId: string;
     let kind: InquiryKind;
     let snapshot: InquirySnapshot;
-    if (input.source === 'product') {
+    if (input.source === 'work') {
+     const [row] = await tx.select({ companyId: jobs.companyId, title: jobs.title, details: jobs.publishedContent })
+      .from(jobs).innerJoin(companies, eq(companies.id, jobs.companyId))
+      .where(and(eq(jobs.id, input.listingId), eq(jobs.status, 'published'), gt(jobs.expiresAt, new Date()), eq(companies.status, 'published')));
+     if (!row?.details || row.details.contactMethod !== 'portal') throw new CompanyError(404, 'Sellele kuulutusele ei saa portaalis kandideerida.');
+     companyId = row.companyId; kind = 'work_application';
+     snapshot = { listingId: input.listingId, title: row.title, optionTitle: null, priceCents: null, quantity: 1 };
+    } else if (input.source === 'product') {
      const [row] = await tx.select({ content: productListings.published, companyId: productListings.companyId })
       .from(productListings).innerJoin(companies, eq(companies.id, productListings.companyId))
       .where(and(eq(productListings.id, input.listingId), eq(productListings.visible, true), isNull(productListings.shopId),

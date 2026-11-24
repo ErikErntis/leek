@@ -25,6 +25,8 @@ export const jobs = pgTable('jobs', {
  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
  status: contentStatus().notNull().default('draft'),
  content: jsonb().$type<import('@leek/contracts').WorkContent>(),
+ publishedContent: jsonb('published_content').$type<import('@leek/contracts').WorkContent>(),
+ publishedAt: timestamp('published_at', { withTimezone: true }),
  reviewState: text('review_state').$type<'draft' | 'pending' | 'returned' | 'approved'>(),
  note: text().notNull().default(''),
  version: integer().notNull().default(0),

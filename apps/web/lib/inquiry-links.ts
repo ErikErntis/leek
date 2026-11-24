@@ -8,7 +8,7 @@ export function inquiryEmailHref(email: string | undefined, title: string, optio
  return `mailto:${encodeURIComponent(address).replace('%40', '@')}?subject=${subject}${body}`;
 }
 
-export function startInquiryHref(source: 'product' | 'service', id: string, optionId?: string) {
+export function startInquiryHref(source: 'product' | 'service' | 'work', id: string, optionId?: string) {
  const query = new URLSearchParams({ source, id });
  if (optionId) query.set('option', optionId);
  return `${customerInboxPath}/uus?${query}`;

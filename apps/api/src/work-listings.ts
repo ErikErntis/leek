@@ -61,6 +61,7 @@ export function createWorkListings(db: Database) {
       title: content.title, municipality: content.municipality, description: content.description,
       type: content.kind === 'gig' ? 'Tööamps' : workLoads[content.load],
       expiresAt: workDeadline(content.deadline), status: 'published' as const,
+      publishedContent: content, publishedAt: new Date(),
      } : { status: current.status === 'published' ? 'published' as const : 'draft' as const }),
      reviewState: decision === 'approve' ? 'approved' : 'returned',
      note, version: current.version + 1, updatedAt: new Date(),

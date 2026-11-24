@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS product_help_requests (
 CREATE TABLE IF NOT EXISTS inquiries (
  id uuid PRIMARY KEY, customer_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
  company_id uuid NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
- kind text NOT NULL CHECK(kind IN ('product','fixed_service','service_quote')),
+ kind text NOT NULL CHECK(kind IN ('product','fixed_service','service_quote','work_application')),
  status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','accepted','declined')),
  snapshot jsonb NOT NULL, location text, desired_date text,
  updated_at timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now()
@@ -118,6 +118,12 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 0;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS jobs_company_idx ON jobs(company_id);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS published_content jsonb;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS published_at timestamptz;
+UPDATE jobs SET published_content = content, published_at = updated_at
+WHERE status = 'published' AND review_state = 'approved' AND published_content IS NULL;
+ALTER TABLE inquiries DROP CONSTRAINT IF EXISTS inquiries_kind_check;
+ALTER TABLE inquiries ADD CONSTRAINT inquiries_kind_check CHECK(kind IN ('product','fixed_service','service_quote','work_application'));
 CREATE TABLE IF NOT EXISTS portal_tickets (token_hash text PRIMARY KEY, cookie text NOT NULL, expires_at timestamptz NOT NULL);
 `;
 export async function migrateBilling() {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workContentSchema } from './work';
 import { municipalities } from './locations';
 export { municipalities } from './locations';
 import { catalogPriceRangeSchema, catalogSortSchema } from './catalog';
@@ -12,7 +13,7 @@ export const companySchema = z.object({
   status: z.enum(['draft', 'pending', 'published', 'rejected']), featured: z.boolean(),
 });
 export type Company = z.infer<typeof companySchema>;
-export const jobSchema = z.object({ id: z.string().uuid(), slug: z.string(), companyId: z.string().uuid(), title: z.string(), municipality: z.string(), type: z.string(), description: z.string(), expiresAt: z.string().datetime(), status: z.enum(['draft', 'pending', 'published', 'closed']) });
+export const jobSchema = z.object({ details: workContentSchema.nullable().optional(), publishedAt: z.string().datetime().optional(), id: z.string().uuid(), slug: z.string(), companyId: z.string().uuid(), title: z.string(), municipality: z.string(), type: z.string(), description: z.string(), expiresAt: z.string().datetime(), status: z.enum(['draft', 'pending', 'published', 'closed']) });
 export type Job = z.infer<typeof jobSchema>;
 export const offerSchema = z.object({ id: z.string().uuid(), companyId: z.string().uuid(), title: z.string(), description: z.string(), expiresAt: z.string().datetime(), status: z.enum(['draft', 'pending', 'published', 'closed']) });
 export type Offer = z.infer<typeof offerSchema>;
@@ -182,3 +183,5 @@ export * from "./inquiries";
 
 export * from './site-content';
 export * from './work';
+
+export * from './work-catalog';

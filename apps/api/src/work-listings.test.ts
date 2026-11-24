@@ -10,6 +10,7 @@ import { blankWork, workDeadline, workToday, workSubmitSchema, type WorkContent 
 import { billingMigration } from '../../../packages/db/src/migrate-billing';
 import { createApp, type AuthHandler } from './app';
 import { createCompanyService } from './company-service';
+import { createInquiries } from './inquiries';
 import { createWorkListings } from './work-listings';
 
 test('company work listings enforce premium ownership, preserve drafts, contact choices and live versions', async () => {
@@ -43,7 +44,7 @@ test('company work listings enforce premium ownership, preserve drafts, contact 
   const work = createWorkListings(db);
   const app = createApp(
    { check: async () => {}, readPublic: async () => ({ companies: [], jobs: [], offers: [], source: 'database' }) },
-   ['https://web.test'], auth, createCompanyService(db), undefined, undefined, undefined, undefined, undefined, undefined, undefined, work,
+   ['https://web.test'], auth, createCompanyService(db), undefined, undefined, undefined, undefined, undefined, createInquiries(db), undefined, work,
   );
   const path = `/v1/my/companies/${company!.id}/work`;
   const request = (body?: unknown, cookie = 'owner', origin = 'https://web.test', url = path) => app.request(url, {
@@ -188,6 +189,32 @@ test('company work listings enforce premium ownership, preserve drafts, contact 
   await okay(await decide(gigId, expired!.version, 'reject', 'Vali uus vastamise tähtaeg.'));
   const emptyQueue = await okay(await request(undefined, 'admin', 'https://web.test', queuePath));
   assert.equal(emptyQueue.items.length, 0);
+  // Public snapshot is unchanged while a replacement is pending or returned.
+  const [approvedRow] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, legacyId));
+  assert.equal(approvedRow!.publishedContent!.title, content.title);
+  const editContent = { ...content, title: 'Veel avaldamata pealkiri', contactMethod: 'portal' as const, contactUrl: '' };
+  const pendingEdit = await okay(await request({ id: legacyId, version: approvedRow!.version, action: 'submit', content: editContent }));
+  const [duringReview] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, legacyId));
+  assert.equal(duringReview!.publishedContent!.title, content.title);
+  assert.equal(duringReview!.content!.title, editContent.title);
+  const application = { source: 'work', id: randomUUID(), listingId: legacyId, message: 'Soovin kandideerida. Mul on laotöö kogemus.' };
+  assert.equal((await request(application, 'other', 'https://web.test', '/v1/my/inquiries')).status, 404);
+  await okay(await decide(legacyId, pendingEdit.version));
+  const applicationResponse = await request(application, 'other', 'https://web.test', '/v1/my/inquiries');
+  assert.equal(applicationResponse.status, 201);
+  const applied = await applicationResponse.json();
+  assert.equal(applied.id, application.id);
+  const threadPath = `/v1/my/inquiries/${applied.id}`;
+  const thread = await okay(await request(undefined, 'other', 'https://web.test', threadPath));
+  assert.equal(thread.kind, 'work_application');
+  assert.equal(thread.snapshot.title, editContent.title);
+  assert.equal(thread.messages[0].body, application.message);
+  assert.equal((await request(undefined, 'owner', 'https://web.test', threadPath)).status, 404);
+  const employer = await okay(await request(undefined, 'owner', 'https://web.test', threadPath + `?company=${company!.id}`));
+  assert.equal(employer.kind, 'work_application');
+  assert.equal((await request({ source: 'work', id: randomUUID(), listingId: gigId, message: 'Tere' }, 'other', 'https://web.test', '/v1/my/inquiries')).status, 404);
+  await db.update(schema.jobs).set({ expiresAt: new Date(0) }).where(eq(schema.jobs.id, legacyId));
+  assert.equal((await request({ ...application, id: randomUUID() }, 'other', 'https://web.test', '/v1/my/inquiries')).status, 404);
   assert.equal(workDeadline('2027-01-10').toISOString(), '2027-01-10T21:59:59.999Z');
   assert.equal(workDeadline('2027-07-10').toISOString(), '2027-07-10T20:59:59.999Z');
  } finally { await client.close(); }

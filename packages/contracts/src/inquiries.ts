@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
-export const inquiryKindSchema = z.enum(['product', 'fixed_service', 'service_quote']);
+export const inquiryKindSchema = z.enum(['product', 'fixed_service', 'service_quote', 'work_application']);
 export const inquiryStatusSchema = z.enum(['open', 'accepted', 'declined']);
 const message = z.string().trim().min(1).max(4000);
 const money = z.number().int().min(0).max(100_000_000);
 const date = z.iso.date().nullable();
 export const inquiryCreateSchema = z.discriminatedUnion('source', [
+ z.object({ source: z.literal('work'), id: z.string().uuid(), listingId: z.string().uuid(), message }).strict(),
  z.object({
   source: z.literal('product'), id: z.string().uuid(), listingId: z.string().uuid(),
   optionId: z.string().uuid().nullable(), quantity: z.number().int().min(1).max(999), message,

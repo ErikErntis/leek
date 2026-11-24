@@ -3,7 +3,7 @@ import { formatServicePrice, type InquirySummary, type InquiryThread } from '@le
 import { inboxHref } from '../../lib/inquiry-links';
 import { InquiryActionForm } from './inquiry-forms';
 
-const kindLabels = { product: 'Tootepäring', fixed_service: 'Teenuse tellimissoov', service_quote: 'Teenuse hinnapäring' };
+const kindLabels = { work_application: 'Tööle kandideerimine', product: 'Tootepäring', fixed_service: 'Teenuse tellimissoov', service_quote: 'Teenuse hinnapäring' };
 const statusLabels = { open: 'Avatud', accepted: 'Kinnitatud', declined: 'Tagasi lükatud' };
 const offerLabels = { pending: 'Ootab vastust', accepted: 'Kinnitatud', declined: 'Tagasi lükatud', replaced: 'Asendatud' };
 const time = new Intl.DateTimeFormat('et-EE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Tallinn' });
@@ -58,7 +58,8 @@ export function InquiryConversation({ thread, company, offset }: { thread: Inqui
     {offset === 0 && <InquiryActionForm id={id} company={company} kind="reply" />}
    </section>
    <aside className="panel inbox-context">
-    <h2>Päringu andmed</h2>
+    <h2>{kind === 'work_application' ? 'Kandideerimise andmed' : 'Päringu andmed'}</h2>
+    {kind === 'work_application' && <p className="muted">Kandideerimine: {snapshot.title}. Tööandja vastab sulle selles vestluses.</p>}
     <dl>
      {snapshot.optionTitle && <><dt>{kind === 'product' ? 'Variant' : 'Pakett'}</dt><dd>{snapshot.optionTitle}</dd></>}
      {kind === 'product' && <><dt>Kogus</dt><dd>{snapshot.quantity} tk</dd></>}
